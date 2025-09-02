@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureRUS - Secure Asset Management System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            width: 90%;
+            max-width: 1200px;
+            min-height: 80vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            display: flex;
+            min-height: 60vh;
+        }
+
+        .sidebar {
+            background: #f8f9fa;
+            width: 250px;
+            padding: 2rem 1rem;
+            border-right: 1px solid #e9ecef;
+        }
+
+        .nav-item {
+            display: block;
+            padding: 1rem 1.5rem;
+            margin-bottom: 0.5rem;
+            background: white;
+            color: #495057;
+            text-decoration: none;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: #e3f2fd;
+            border-color: #2196f3;
+            transform: translateX(5px);
+        }
+
+        .nav-item.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            transform: translateX(5px);
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+        }
+
+        .welcome-section {
+            text-align: center;
+            padding: 3rem 2rem;
+        }
+
+        .welcome-section h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .welcome-section p {
+            font-size: 1.1rem;
+            color: #666;
+            line-height: 1.6;
+            max-width: 600px;
+            margin: 0 auto 2rem;
+        }
+
+        .action-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .action-card {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .action-card:hover {
+            transform: translateY(-10px);
+            border-color: #667eea;
+        }
+
+        .action-card .icon {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            color: white;
+        }
+
+        .action-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .action-card p {
+            color: #666;
+            line-height: 1.5;
+            margin-bottom: 1.5rem;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.8rem 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: flex-start;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .feature-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            margin-right: 1rem;
+            flex-shrink: 0;
+        }
+
+        .feature-content h4 {
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-content p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .status-online {
+            background: #28a745;
+        }
+
+        .status-offline {
+            background: #dc3545;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .action-cards {
+                grid-template-columns: 1fr;
+            }
+
+            .container {
+                width: 95%;
+                margin: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🛡️ SecureRUS</h1>
+            <p>Role-Based Access Control System with Multi-Factor Authentication</p>
+            <div style="margin-top: 1rem;">
+                <span class="status-indicator status-online"></span>
+                <span>System Status: Online</span>
+            </div>
+        </header>
+
+        <div class="content">
+            <nav class="sidebar">
+                <a href="#" class="nav-item active" data-section="home">
+                    🏠 Home
+                </a>
+                <a href="#" class="nav-item" data-section="login">
+                    🔐 Login
+                </a>
+                <a href="#" class="nav-item" data-section="register">
+                    👤 Register
+                </a>
+                <a href="#" class="nav-item" data-section="dashboard">
+                    📊 Dashboard
+                </a>
+                <a href="#" class="nav-item" data-section="files">
+                    📁 File Management
+                </a>
+                <a href="#" class="nav-item" data-section="admin">
+                    ⚙️ Administration
+                </a>
+                <a href="#" class="nav-item" data-section="analytics">
+                    📈 Analytics
+                </a>
+                <a href="#" class="nav-item" data-section="profile">
+                    👨‍💼 Profile
+                </a>
+            </nav>
+
+            <main class="main-content">
+                <!-- Home Section -->
+                <div id="home-section" class="section">
+                    <div class="welcome-section">
+                        <h2>Welcome to SecureRUS</h2>
+                        <p>
+                            A comprehensive security platform designed for the University of Pretoria's COS 330 practical. 
+                            Our system implements advanced role-based access control with multi-factor authentication, 
+                            file encryption, and real-time anomaly detection to ensure the highest level of security 
+                            for your digital assets.
+                        </p>
+
+                        <div class="action-cards">
+                            <div class="action-card">
+                                <div class="icon">🔐</div>
+                                <h3>Secure Authentication</h3>
+                                <p>Multi-factor authentication with TOTP support and backup codes for ultimate security</p>
+                                <button class="btn" onclick="showSection('login')">Get Started</button>
+                            </div>
+
+                            <div class="action-card">
+                                <div class="icon">👥</div>
+                                <h3>Role-Based Access</h3>
+                                <p>Four distinct user roles (Admin, Manager, User, Guest) with granular permissions</p>
+                                <button class="btn" onclick="showSection('register')">Create Account</button>
+                            </div>
+
+                            <div class="action-card">
+                                <div class="icon">🛡️</div>
+                                <h3>File Protection</h3>
+                                <p>AES-256 encryption for confidential files with category-based access control</p>
+                                <button class="btn" onclick="showSection('files')">Manage Files</button>
+                            </div>
+                        </div>
+
+                        <div class="features-grid">
+                            <div class="feature-item">
+                                <div class="feature-icon">🔍</div>
+                                <div class="feature-content">
+                                    <h4>Anomaly Detection</h4>
+                                    <p>Real-time monitoring with risk-based alerting system</p>
+                                </div>
+                            </div>
+
+                            <div class="feature-item">
+                                <div class="feature-icon">📝</div>
+                                <div class="feature-content">
+                                    <h4>Comprehensive Audit</h4>
+                                    <p>Complete activity logging with detailed security metrics</p>
+                                </div>
+                            </div>
+
+                            <div class="feature-item">
+                                <div class="feature-icon">⚡</div>
+                                <div class="feature-content">
+                                    <h4>Real-time Analytics</h4>
+                                    <p>Advanced visualization and monitoring dashboard</p>
+                                </div>
+                            </div>
+
+                            <div class="feature-item">
+                                <div class="feature-icon">🔒</div>
+                                <div class="feature-content">
+                                    <h4>Zero-Trust Security</h4>
+                                    <p>Every action is verified and authenticated</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Login Section -->
+                <div id="login-section" class="section hidden">
+                    <div style="max-width: 400px; margin: 0 auto; padding: 2rem;">
+                        <h2 style="text-align: center; margin-bottom: 2rem; color: #333;">🔐 Secure Login</h2>
+                        
+                        <form id="loginForm">
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 500;">Email Address</label>
+                                <input type="email" id="loginEmail" required 
+                                       style="width: 100%; padding: 1rem; border: 2px solid #e9ecef; border-radius: 10px; font-size: 1rem;"
+                                       placeholder="Enter your email address">
+                            </div>
+
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 500;">Password</label>
+                                <input type="password" id="loginPassword" required 
+                                       style="width: 100%; padding: 1rem; border: 2px solid #e9ecef; border-radius: 10px; font-size: 1rem;"
+                                       placeholder="Enter your password">
+                            </div>
+
+                            <button type="submit" class="btn" style="width: 100%; margin-top: 1.5rem;">
+                                Sign In Securely
+                            </button>
+                        </form>
+
+                        <div id="mfa-section" class="hidden" style="margin-top: 2rem; padding: 2rem; background: #f8f9fa; border-radius: 10px;">
+                            <h3 style="text-align: center; margin-bottom: 1rem; color: #333;">📱 Multi-Factor Authentication</h3>
+                            <p style="text-align: center; color: #666; margin-bottom: 1rem;">Enter the 6-digit code from your authenticator app</p>
+                            
+                            <div style="margin-bottom: 1rem;">
+                                <input type="text" id="mfaToken" maxlength="6" 
+                                       style="width: 100%; padding: 1rem; border: 2px solid #e9ecef; border-radius: 10px; font-size: 1.2rem; text-align: center; letter-spacing: 0.2rem;"
+                                       placeholder="000000">
+                            </div>
+
+                            <button onclick="verifyMFA()" class="btn" style="width: 100%;">
+                                Verify & Continue
+                            </button>
+
+                            <p style="text-align: center; margin-top: 1rem; font-size: 0.9rem; color: #666;">
+                                Having trouble? Use one of your backup codes instead.
+                            </p>
+                        </div>
+
+                        <p style="text-align: center; margin-top: 2rem; color: #666;">
+                            Don't have an account? <a href="#" onclick="showSection('register')" style="color: #667eea; text-decoration: none;">Create one here</a>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Register Section -->
+                <div id="register-section" class="section hidden">
+                    <div style="max-width: 500px; margin: 0 auto; padding: 2rem;">
+                        <h2 style="text-align: center; margin-bottom: 2rem; color: #333;">👤 Create Account</h2>
+                        
+                        <form id="registerForm">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                                <div>
+                                    <label style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 500;">First Name</label>
+                                    <input type="text" id="firstName" required 
+                                           style="width: 100%; padding: 1rem; border: 2px solid #e9ecef; border-radius: 10px; font-size: 1rem;"
+                                           placeholder="First name">
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 500;">Last Name</label>
+                                    <input type="text" id="lastName" required 
+                                           style="width: 100%; padding: 1rem; border: 2px solid #e9ecef; border-radius: 10px; font-size: 1rem;"
+                                           placeholder="Last name">
+                                </div>
+                            </div>
+
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 500;">Email Address</label>
+                                <input type="email" id="registerEmail" required 
+                                       style="width: 100%; padding: 1rem; border: 2px solid #e9ecef; border-radius: 10px; font-size: 1rem;"
+                                       placeholder="Enter your email address">
+                            </div>
+
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 500;">Password</label>
+                                <input type="password" id="registerPassword" required 
+                                       style="width: 100%; padding: 1rem; border: 2px solid #e9ecef; border-radius: 10px; font-size: 1rem;"
+                                       placeholder="Create a strong password">
+                                <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #666;">
+                                    Password must be at least 8 characters with uppercase, lowercase, numbers, and symbols
+                                </div>
+                            </div>
+
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 500;">Requested Role</label>
+                                <select id="requestedRole" required 
+                                        style="width: 100%; padding: 1rem; border: 2px solid #e9ecef; border-radius: 10px; font-size: 1rem;">
+                                    <option value="">Select your requested role</option>
+                                    <option value="USER">User - Standard file access</option>
+                                    <option value="MANAGER">Manager - Team management access</option>
+                                    <option value="ADMIN">Admin - Full system access</option>
+                                </select>
+                            </div>
+
+                            <button type="submit" class="btn" style="width: 100%; margin-top: 1.5rem;">
+                                Create Account
+                            </button>
+                        </form>
+
+                        <p style="text-align: center; margin-top: 2rem; color: #666;">
+                            Already have an account? <a href="#" onclick="showSection('login')" style="color: #667eea; text-decoration: none;">Sign in here</a>
+                        </p>
+
+                        <div style="margin-top: 2rem; padding: 1.5rem; background: #e3f2fd; border-radius: 10px; border-left: 4px solid #2196f3;">
+                            <h4 style="color: #1976d2; margin-bottom: 1rem;">📝 Account Approval Process</h4>
+                            <p style="color: #1565c0; font-size: 0.9rem; line-height: 1.5;">
+                                After registration, your account will be reviewed by an administrator. 
+                                You'll receive an email notification once your account is approved and ready to use.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dashboard Section (Logged in users) -->
+                <div id="dashboard-section" class="section hidden">
+                    <h2 style="color: #333; margin-bottom: 2rem;">📊 User Dashboard</h2>
+                    <div id="dashboard-content">
+                        <p style="text-align: center; color: #666; margin: 3rem 0;">Please log in to access your dashboard</p>
+                    </div>
+                </div>
+
+                <!-- Files Section -->
+                <div id="files-section" class="section hidden">
+                    <h2 style="color: #333; margin-bottom: 2rem;">📁 File Management</h2>
+                    <div id="files-content">
+                        <p style="text-align: center; color: #666; margin: 3rem 0;">Please log in to manage your files</p>
+                    </div>
+                </div>
+
+                <!-- Admin Section -->
+                <div id="admin-section" class="section hidden">
+                    <h2 style="color: #333; margin-bottom: 2rem;">⚙️ System Administration</h2>
+                    <div id="admin-content">
+                        <p style="text-align: center; color: #666; margin: 3rem 0;">Administrator access required</p>
+                    </div>
+                </div>
+
+                <!-- Analytics Section -->
+                <div id="analytics-section" class="section hidden">
+                    <h2 style="color: #333; margin-bottom: 2rem;">📈 Security Analytics</h2>
+                    <div id="analytics-content">
+                        <p style="text-align: center; color: #666; margin: 3rem 0;">Manager or Administrator access required</p>
+                    </div>
+                </div>
+
+                <!-- Profile Section -->
+                <div id="profile-section" class="section hidden">
+                    <h2 style="color: #333; margin-bottom: 2rem;">👨‍💼 User Profile</h2>
+                    <div id="profile-content">
+                        <p style="text-align: center; color: #666; margin: 3rem 0;">Please log in to view your profile</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

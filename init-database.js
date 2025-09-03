@@ -15,7 +15,7 @@ async function initializeDatabase() {
     
     const db = new sqlite3.Database(dbPath);
     
-    console.log('🔧 Creating database tables...');
+    console.log('Creating database tables...');
     
     // Create tables synchronously using serialize
     await new Promise((resolve, reject) => {
@@ -144,7 +144,7 @@ async function initializeDatabase() {
 }
 
 function setupRolePermissions(db, callback) {
-    console.log('🔧 Setting up role permissions...');
+    console.log('Setting up role permissions...');
     
     const permissions = [
         // Admin permissions - full access to everything
@@ -198,7 +198,7 @@ function setupRolePermissions(db, callback) {
 }
 
 async function createDefaultAdmin(db, callback) {
-    console.log('🔧 Creating default admin user...');
+    console.log('Creating default admin user...');
     
     db.get('SELECT id FROM users WHERE email = ?', ['admin@secureus.com'], async (err, row) => {
         if (err) {
@@ -242,7 +242,7 @@ async function createDefaultAdmin(db, callback) {
 
 async function main() {
     try {
-        console.log('🚀 Initializing SecureRUS Database...\n');
+        console.log('Initializing SecureRUS Database...\n');
         
         const db = await initializeDatabase();
         

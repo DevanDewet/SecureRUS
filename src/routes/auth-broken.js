@@ -599,7 +599,7 @@ function createAuthRoutes(database, authMiddleware) {
                 updateQuery = 'UPDATE users SET failed_login_attempts = ?, locked_until = ? WHERE id = ?';
                 params = [failedAttempts, lockUntil, userId];
                 
-                console.log(`🔒 Account locked for user ID ${userId} due to ${failedAttempts} failed attempts`);
+                console.log(`Account locked for user ID ${userId} due to ${failedAttempts} failed attempts`);
             }
 
             await database.db.run(updateQuery, params);

@@ -11,7 +11,7 @@ function createAuthRoutes(database, authMiddleware) {
         async (req, res) => {
             try {
                 const { email, password } = req.body;
-                console.log(`🔐 Login attempt for: ${email}`);
+                console.log(`Login attempt for: ${email}`);
 
                 // Get user from database
                 const user = await database.getUserByEmail(email);
@@ -43,7 +43,7 @@ function createAuthRoutes(database, authMiddleware) {
                 // Generate JWT token
                 const token = await authMiddleware.generateJWT(user);
                 
-                console.log(`✅ Login successful for: ${user.email}`);
+                console.log(`Login successful for: ${user.email}`);
 
                 res.json({
                     success: true,
@@ -61,7 +61,7 @@ function createAuthRoutes(database, authMiddleware) {
                 });
 
             } catch (error) {
-                console.error('❌ Login error:', error.message);
+                console.error('Login error:', error.message);
                 res.status(500).json({
                     success: false,
                     message: 'Login failed. Please try again.'
@@ -76,7 +76,7 @@ function createAuthRoutes(database, authMiddleware) {
         async (req, res) => {
             try {
                 const { firstName, lastName, email, password, requestedRole } = req.body;
-                console.log(`📝 Registration attempt for: ${email}`);
+                console.log(`Registration attempt for: ${email}`);
 
                 // Check if user already exists
                 const existingUser = await database.getUserByEmail(email);
@@ -100,7 +100,7 @@ function createAuthRoutes(database, authMiddleware) {
                     status: 'PENDING_APPROVAL'
                 });
 
-                console.log(`✅ User registered: ${email} (ID: ${userId})`);
+                console.log(`User registered: ${email} (ID: ${userId})`);
 
                 res.status(201).json({
                     success: true,
@@ -109,7 +109,7 @@ function createAuthRoutes(database, authMiddleware) {
                 });
 
             } catch (error) {
-                console.error('❌ Registration error:', error.message);
+                console.error('Registration error:', error.message);
                 res.status(500).json({
                     success: false,
                     message: 'Registration failed. Please try again.'
@@ -139,7 +139,7 @@ function createAuthRoutes(database, authMiddleware) {
                     }
                 });
             } catch (error) {
-                console.error('❌ Token verification error:', error.message);
+                console.error('Token verification error:', error.message);
                 res.status(401).json({
                     success: false,
                     message: 'Invalid token'
@@ -158,7 +158,7 @@ function createAuthRoutes(database, authMiddleware) {
                     message: 'Logout successful'
                 });
             } catch (error) {
-                console.error('❌ Logout error:', error.message);
+                console.error('Logout error:', error.message);
                 res.status(500).json({
                     success: false,
                     message: 'Logout failed'

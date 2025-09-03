@@ -2,7 +2,7 @@
 const Database = require('./src/models/Database');
 
 async function setupDatabase() {
-    console.log('🔧 Setting up SecureRUS Database...');
+    console.log('Setting up SecureRUS Database...');
     
     try {
         const database = new Database();
@@ -63,7 +63,7 @@ async function setupDatabase() {
 
 // Check required dependencies
 function checkDependencies() {
-    console.log('🔍 Checking dependencies...');
+    console.log('Checking dependencies...');
     
     const requiredPackages = [
         'sqlite3',

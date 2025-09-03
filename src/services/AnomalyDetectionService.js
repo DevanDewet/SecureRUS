@@ -41,7 +41,7 @@ class AnomalyDetectionService {
         const anomalies = [];
         let totalRiskScore = 0;
 
-        console.log(`🔍 Starting anomaly detection for user: ${userContext.userId}`);
+        console.log(`Starting anomaly detection for user: ${userContext.userId}`);
 
         try {
             // 1. Check time-based anomalies

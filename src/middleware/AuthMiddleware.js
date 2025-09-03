@@ -372,11 +372,11 @@ class AuthMiddleware {
 
             const token = jwt.sign(payload, process.env.JWT_SECRET, options);
             
-            console.log(`🔑 JWT token generated for user: ${user.email}`);
+            console.log(`JWT token generated for user: ${user.email}`);
             return token;
 
         } catch (error) {
-            console.error('❌ JWT generation error:', error.message);
+            console.error('JWT generation error:', error.message);
             throw new Error('Failed to generate authentication token');
         }
     }

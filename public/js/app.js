@@ -131,7 +131,7 @@ class SecureRUSApp {
 
             if (data.success) {
                 if (data.requiresMFA) {
-                    console.log('📱 MFA required');
+                    console.log('MFA required');
                     document.getElementById('mfa-section').classList.remove('hidden');
                     this.tempToken = data.tempToken;
                 } else {
@@ -184,7 +184,7 @@ class SecureRUSApp {
     }
 
     handleLoginSuccess(data) {
-        console.log('✅ Login successful');
+        console.log('Login successful');
         
         this.token = data.token;
         this.user = data.user;
@@ -263,13 +263,13 @@ class SecureRUSApp {
             if (response.ok) {
                 const data = await response.json();
                 this.user = data.user;
-                console.log(`✅ Token valid - logged in as ${this.user.email}`);
+                console.log(`Token valid - logged in as ${this.user.email}`);
             } else {
-                console.log('⚠️ Token invalid or expired, logging out');
+                console.log('Token invalid or expired, logging out');
                 this.logout();
             }
         } catch (error) {
-            console.error('⚠️ Token verification failed:', error.message);
+            console.error('Token verification failed:', error.message);
             this.logout();
         }
     }
@@ -285,19 +285,19 @@ class SecureRUSApp {
             
             <div class="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 2rem 0;">
                 <div class="stat-card" style="background: #e3f2fd; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                    <div style="font-size: 2rem; color: #1976d2; margin-bottom: 0.5rem;">📊</div>
+                    <div style="font-size: 2rem; color: #1976d2; margin-bottom: 0.5rem;"></div>
                     <h4 style="color: #1565c0;">Dashboard</h4>
                     <p style="color: #1976d2;">Overview & Stats</p>
                 </div>
                 
                 <div class="stat-card" style="background: #e8f5e8; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                    <div style="font-size: 2rem; color: #388e3c; margin-bottom: 0.5rem;">🔐</div>
+                    <div style="font-size: 2rem; color: #388e3c; margin-bottom: 0.5rem;"></div>
                     <h4 style="color: #2e7d32;">Security</h4>
                     <p style="color: #388e3c;">MFA Enabled</p>
                 </div>
                 
                 <div class="stat-card" style="background: #fff3e0; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                    <div style="font-size: 2rem; color: #f57c00; margin-bottom: 0.5rem;">📁</div>
+                    <div style="font-size: 2rem; color: #f57c00; margin-bottom: 0.5rem;"></div>
                     <h4 style="color: #ef6c00;">Files</h4>
                     <p style="color: #f57c00;">Access Controlled</p>
                 </div>
@@ -306,9 +306,9 @@ class SecureRUSApp {
             <div style="margin-top: 2rem;">
                 <h4>Quick Actions</h4>
                 <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;">
-                    <button class="btn" onclick="app.showSection('files')">📁 Manage Files</button>
-                    <button class="btn" onclick="app.showSection('profile')">👤 View Profile</button>
-                    <button class="btn" onclick="app.logout()">🚪 Logout</button>
+                    <button class="btn" onclick="app.showSection('files')">Manage Files</button>
+                    <button class="btn" onclick="app.showSection('profile')">View Profile</button>
+                    <button class="btn" onclick="app.logout()">Logout</button>
                 </div>
             </div>
         `;
@@ -392,11 +392,11 @@ class SecureRUSApp {
                             <div style="display: flex; gap: 0.5rem;">
                                 <button class="btn" style="padding: 0.5rem 1rem; font-size: 0.8rem;" 
                                         onclick="app.downloadFile('${file.id}', '${file.filename}')">
-                                    📥 Download
+                                    Download
                                 </button>
                                 <button class="btn" style="padding: 0.5rem 1rem; font-size: 0.8rem; background: #dc3545;" 
                                         onclick="app.deleteFile('${file.id}', '${file.filename}')">
-                                    🗑️ Delete
+                                    Delete
                                 </button>
                             </div>
                         </div>
@@ -518,7 +518,7 @@ class SecureRUSApp {
         content.innerHTML = `
             <div style="max-width: 500px;">
                 <div style="background: white; border-radius: 15px; padding: 2rem; margin-bottom: 2rem; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
-                    <h3 style="margin-bottom: 1.5rem; color: #333;">👤 Profile Information</h3>
+                    <h3 style="margin-bottom: 1.5rem; color: #333;">Profile Information</h3>
                     
                     <div style="margin-bottom: 1rem;">
                         <label style="font-weight: 500; color: #333;">Full Name</label>
@@ -545,15 +545,15 @@ class SecureRUSApp {
                         <p style="color: #666; margin: 0.5rem 0;">${new Date(this.user.created_at).toLocaleDateString()}</p>
                     </div>
                     
-                    <button class="btn" onclick="app.logout()">🚪 Logout</button>
+                    <button class="btn" onclick="app.logout()">Logout</button>
                 </div>
                 
                 <div style="background: #e3f2fd; border-radius: 15px; padding: 2rem; border-left: 4px solid #2196f3;">
-                    <h4 style="color: #1976d2; margin-bottom: 1rem;">🔐 Security Status</h4>
+                    <h4 style="color: #1976d2; margin-bottom: 1rem;">Security Status</h4>
                     <p style="color: #1565c0; margin-bottom: 1rem;">
-                        ✅ Multi-Factor Authentication: <strong>Enabled</strong><br>
-                        ✅ Password Security: <strong>Strong</strong><br>
-                        ✅ Account Verification: <strong>Verified</strong>
+                        Multi-Factor Authentication: <strong>Enabled</strong><br>
+                        Password Security: <strong>Strong</strong><br>
+                        Account Verification: <strong>Verified</strong>
                     </p>
                 </div>
             </div>
@@ -572,24 +572,24 @@ class SecureRUSApp {
         // This would load the admin interface - placeholder for now
         content.innerHTML = `
             <div style="margin-bottom: 2rem;">
-                <h3>🛠️ System Administration</h3>
+                <h3>System Administration</h3>
                 <p>Administrative functions will be implemented here.</p>
                 
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 2rem 0;">
                     <div style="background: #e3f2fd; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                        <div style="font-size: 2rem; margin-bottom: 1rem;">👥</div>
+                        <div style="font-size: 2rem; margin-bottom: 1rem;"></div>
                         <h4>User Management</h4>
                         <p>Manage user accounts</p>
                     </div>
                     
                     <div style="background: #e8f5e8; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                        <div style="font-size: 2rem; margin-bottom: 1rem;">📝</div>
+                        <div style="font-size: 2rem; margin-bottom: 1rem;"></div>
                         <h4>Audit Logs</h4>
                         <p>Review system activity</p>
                     </div>
                     
                     <div style="background: #fff3e0; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                        <div style="font-size: 2rem; margin-bottom: 1rem;">⚙️</div>
+                        <div style="font-size: 2rem; margin-bottom: 1rem;"></div>
                         <h4>System Settings</h4>
                         <p>Configure system parameters</p>
                     </div>
@@ -610,22 +610,22 @@ class SecureRUSApp {
         // This would load the analytics interface - placeholder for now
         content.innerHTML = `
             <div style="margin-bottom: 2rem;">
-                <h3>📊 Security Analytics</h3>
+                <h3>Security Analytics</h3>
                 <p>Real-time monitoring and analytics dashboard.</p>
                 
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 2rem 0;">
                     <div style="background: #e3f2fd; padding: 1.5rem; border-radius: 10px;">
-                        <h4 style="color: #1976d2;">🔍 Anomaly Detection</h4>
+                        <h4 style="color: #1976d2;">Anomaly Detection</h4>
                         <p style="color: #1565c0;">Real-time threat monitoring</p>
                     </div>
                     
                     <div style="background: #e8f5e8; padding: 1.5rem; border-radius: 10px;">
-                        <h4 style="color: #388e3c;">📈 Activity Metrics</h4>
+                        <h4 style="color: #388e3c;">Activity Metrics</h4>
                         <p style="color: #2e7d32;">User activity analysis</p>
                     </div>
                     
                     <div style="background: #fff3e0; padding: 1.5rem; border-radius: 10px;">
-                        <h4 style="color: #f57c00;">🛡️ Security Events</h4>
+                        <h4 style="color: #f57c00;">Security Events</h4>
                         <p style="color: #ef6c00;">Security incident tracking</p>
                     </div>
                 </div>
@@ -645,7 +645,7 @@ class SecureRUSApp {
             });
         } catch (error) {
             // Ignore logout errors - we'll clear local data anyway
-            console.log('⚠️ Logout endpoint unavailable (expected during development)');
+            console.log('Logout endpoint unavailable (expected during development)');
         }
 
         // Clear local data
@@ -695,7 +695,7 @@ class SecureRUSApp {
                 z-index: 1000;
                 animation: slideIn 0.3s ease;
             ">
-                ${type === 'error' ? '❌' : '✅'} ${message}
+                ${message}
             </div>
         `;
 

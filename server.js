@@ -30,7 +30,7 @@ class SecureRUSServer {
     }
 
     initializeMiddleware() {
-        console.log('🔧 Initializing security middleware...');
+        console.log('Initializing security middleware...');
 
         // Trust proxy (for accurate IP addresses behind load balancers)
         this.app.set('trust proxy', 1);

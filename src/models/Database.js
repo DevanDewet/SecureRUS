@@ -219,25 +219,40 @@ class Database {
     // User management methods
     async createUser(userData) {
         return new Promise((resolve, reject) => {
-            const { email, password, firstName, lastName } = userData;
+            const { email, password, firstName, lastName, role = 'USER', status = 'PENDING_APPROVAL', isHashed = false } = userData;
             
-            bcrypt.hash(password, 12, (err, hashedPassword) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
-
+            if (isHashed) {
+                // Password is already hashed, use it directly
                 this.db.run(`
-                    INSERT INTO users (email, password_hash, first_name, last_name)
-                    VALUES (?, ?, ?, ?)
-                `, [email, hashedPassword, firstName, lastName], function(err) {
+                    INSERT INTO users (email, password_hash, first_name, last_name, role, status)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `, [email, password, firstName, lastName, role, status], function(err) {
                     if (err) {
                         reject(err);
                     } else {
                         resolve(this.lastID);
                     }
                 });
-            });
+            } else {
+                // Hash the password first
+                bcrypt.hash(password, 12, (err, hashedPassword) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+
+                    this.db.run(`
+                        INSERT INTO users (email, password_hash, first_name, last_name, role, status)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    `, [email, hashedPassword, firstName, lastName, role, status], function(err) {
+                        if (err) {
+                            reject(err);
+                        } else {
+                            resolve(this.lastID);
+                        }
+                    });
+                });
+            }
         });
     }
 

@@ -100,11 +100,16 @@ class SecureRUSServer {
         this.app.use(SecurityMiddleware.requestLogger);
         this.app.use(SecurityMiddleware.secureSession);
 
-        // Static files serving with security
+        // Static files serving with security (disabled caching for development)
         this.app.use(express.static(path.join(__dirname, 'public'), {
-            maxAge: '1d',
+            maxAge: 0,
             etag: false,
-            lastModified: false
+            lastModified: false,
+            setHeaders: (res, path) => {
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+            }
         }));
 
         // API rate limiting

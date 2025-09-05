@@ -231,6 +231,10 @@
             display: none;
         }
 
+        .modal:not(.hidden) {
+            display: flex;
+        }
+
         @media (max-width: 768px) {
             .content {
                 flex-direction: column;
@@ -492,7 +496,75 @@
                 <div id="files-section" class="section hidden">
                     <h2 style="color: #333; margin-bottom: 2rem;">File Management</h2>
                     <div id="files-content">
-                        <p style="text-align: center; color: #666; margin: 3rem 0;">Please log in to manage your files</p>
+                        <!-- File Management Tabs -->
+                        <div class="file-tabs" style="display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 2px solid #e9ecef;">
+                            <button class="tab-btn active" data-category="DOCUMENTS" style="padding: 1rem 2rem; border: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px 10px 0 0; cursor: pointer;">
+                                📄 Documents
+                            </button>
+                            <button class="tab-btn" data-category="IMAGES" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer;">
+                                🖼️ Images
+                            </button>
+                            <button class="tab-btn" data-category="CONFIDENTIAL" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer;">
+                                🔒 Confidential
+                            </button>
+                        </div>
+
+                        <!-- Upload Section -->
+                        <div class="upload-section" style="background: #f8f9fa; padding: 2rem; border-radius: 15px; margin-bottom: 2rem;">
+                            <h3 style="color: #333; margin-bottom: 1rem;">Upload New File</h3>
+                            <div class="upload-form">
+                                <div class="file-input-container" style="margin-bottom: 1rem;">
+                                    <input type="file" id="fileInput" accept="" style="display: none;">
+                                    <label for="fileInput" class="file-input-label" style="display: inline-block; padding: 1rem 2rem; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border-radius: 10px; cursor: pointer; text-align: center; transition: all 0.3s ease;">
+                                        Choose File
+                                    </label>
+                                    <span id="selectedFileName" style="margin-left: 1rem; color: #666;"></span>
+                                </div>
+                                <div style="display: flex; gap: 1rem;">
+                                    <button id="uploadBtn" class="btn" style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);">
+                                        Upload File
+                                    </button>
+                                    <button id="cancelUploadBtn" class="btn" style="background: #6c757d;">
+                                        Cancel
+                                    </button>
+                                </div>
+                                <div id="uploadProgress" class="hidden" style="margin-top: 1rem;">
+                                    <div style="background: #e9ecef; border-radius: 10px; overflow: hidden;">
+                                        <div id="progressBar" style="height: 8px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); width: 0%; transition: width 0.3s ease;"></div>
+                                    </div>
+                                    <p id="uploadStatus" style="margin-top: 0.5rem; color: #666; font-size: 0.9rem;"></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Files List -->
+                        <div class="files-container">
+                            <div class="files-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <h3 id="filesTitle" style="color: #333;">Documents</h3>
+                                <button id="refreshFilesBtn" class="btn" style="background: #17a2b8; padding: 0.5rem 1rem;">
+                                    🔄 Refresh
+                                </button>
+                            </div>
+                            <div id="filesList" class="files-grid" style="display: grid; gap: 1rem;">
+                                <p style="text-align: center; color: #666; margin: 3rem 0;">Loading files...</p>
+                            </div>
+                        </div>
+
+                        <!-- File View Modal -->
+                        <div id="fileViewModal" class="modal hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+                            <div class="modal-content" style="background: white; border-radius: 15px; padding: 2rem; max-width: 80%; max-height: 80%; overflow: auto;">
+                                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #e9ecef; padding-bottom: 1rem;">
+                                    <h3 id="modalFileName" style="color: #333;"></h3>
+                                    <button id="closeModalBtn" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">✖️</button>
+                                </div>
+                                <div id="modalFileContent" style="white-space: pre-wrap; font-family: monospace; background: #f8f9fa; padding: 1rem; border-radius: 10px; max-height: 400px; overflow: auto;">
+                                </div>
+                                <div class="modal-actions" style="margin-top: 1rem; display: flex; gap: 1rem;">
+                                    <button id="downloadFileBtn" class="btn">Download</button>
+                                    <button id="deleteFileBtn" class="btn" style="background: #dc3545;">Delete</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

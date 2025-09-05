@@ -26,7 +26,20 @@ function createFileRoutes(database, authMiddleware) {
     });
 
     const fileFilter = (req, file, cb) => {
-        const category = req.body.category;
+        // Get category from URL path since req.body may not be parsed yet
+        const urlPath = req.path;
+        let category = '';
+        
+        if (urlPath.includes('/images')) {
+            category = 'IMAGES';
+        } else if (urlPath.includes('/documents')) {
+            category = 'DOCUMENTS';
+        } else if (urlPath.includes('/confidential')) {
+            category = 'CONFIDENTIAL';
+        } else {
+            return cb(new Error('Invalid category'), false);
+        }
+        
         let allowedTypes = [];
 
         switch (category) {
@@ -62,8 +75,17 @@ function createFileRoutes(database, authMiddleware) {
     // Images endpoint
     router.all('/images', 
         authMiddleware.authenticateToken(),
-        SecurityMiddleware.validateFileUpload,
-        SecurityMiddleware.handleValidationErrors,
+        // Only validate for non-file uploads (JSON requests)
+        (req, res, next) => {
+            if (req.get('Content-Type') && req.get('Content-Type').includes('application/json')) {
+                return SecurityMiddleware.validateFileUpload[0](req, res, () => {
+                    SecurityMiddleware.validateFileUpload[1](req, res, () => {
+                        SecurityMiddleware.handleValidationErrors(req, res, next);
+                    });
+                });
+            }
+            next();
+        },
         async (req, res) => {
             return await handleFileOperation('IMAGES', req, res, database, authMiddleware, encryptionService, upload);
         }
@@ -72,8 +94,17 @@ function createFileRoutes(database, authMiddleware) {
     // Documents endpoint  
     router.all('/documents',
         authMiddleware.authenticateToken(),
-        SecurityMiddleware.validateFileUpload,
-        SecurityMiddleware.handleValidationErrors,
+        // Only validate for non-file uploads (JSON requests)
+        (req, res, next) => {
+            if (req.get('Content-Type') && req.get('Content-Type').includes('application/json')) {
+                return SecurityMiddleware.validateFileUpload[0](req, res, () => {
+                    SecurityMiddleware.validateFileUpload[1](req, res, () => {
+                        SecurityMiddleware.handleValidationErrors(req, res, next);
+                    });
+                });
+            }
+            next();
+        },
         async (req, res) => {
             return await handleFileOperation('DOCUMENTS', req, res, database, authMiddleware, encryptionService, upload);
         }
@@ -89,8 +120,17 @@ function createFileRoutes(database, authMiddleware) {
             }
             next();
         },
-        SecurityMiddleware.validateFileUpload,
-        SecurityMiddleware.handleValidationErrors,
+        // Only validate for non-file uploads (JSON requests)
+        (req, res, next) => {
+            if (req.get('Content-Type') && req.get('Content-Type').includes('application/json')) {
+                return SecurityMiddleware.validateFileUpload[0](req, res, () => {
+                    SecurityMiddleware.validateFileUpload[1](req, res, () => {
+                        SecurityMiddleware.handleValidationErrors(req, res, next);
+                    });
+                });
+            }
+            next();
+        },
         async (req, res) => {
             return await handleFileOperation('CONFIDENTIAL', req, res, database, authMiddleware, encryptionService, upload);
         }
@@ -99,48 +139,76 @@ function createFileRoutes(database, authMiddleware) {
     // Main file operation handler
     async function handleFileOperation(category, req, res, database, authMiddleware, encryptionService, upload) {
         try {
-            const { action } = req.body;
-            const userId = req.user.id;
-            const userRole = req.user.role;
+            // For file uploads, we need to handle multer first
+            if (req.get('Content-Type') && req.get('Content-Type').includes('multipart/form-data')) {
+                // This is a file upload, let multer parse it first
+                return new Promise((resolve, reject) => {
+                    upload.single('file')(req, res, async (err) => {
+                        if (err) {
+                            console.error('Multer error:', err.message);
+                            return res.status(400).json({
+                                success: false,
+                                message: err.message
+                            });
+                        }
 
-            console.log(`File operation: ${action} on ${category} by user ${userId} (${userRole})`);
+                        // Now req.body should be available
+                        const { action } = req.body;
+                        
+                        if (!action) {
+                            return res.status(400).json({
+                                success: false,
+                                message: 'Action is required in request body'
+                            });
+                        }
 
-            // Check permissions
-            const permissions = await database.getRolePermissions(userRole, category);
-            if (!permissions) {
-                await authMiddleware.logActivity(req, `${category}_${action.toUpperCase()}_DENIED`, 'No permissions', false);
-                return res.status(403).json({
-                    success: false,
-                    message: 'Access denied - no permissions for this resource'
+                        // Validate file upload data
+                        const reqCategory = req.body.category;
+                        const reqAction = req.body.action;
+
+                        if (!reqCategory || !['IMAGES', 'DOCUMENTS', 'CONFIDENTIAL'].includes(reqCategory)) {
+                            return res.status(400).json({
+                                success: false,
+                                message: 'Validation failed',
+                                errors: [{
+                                    field: 'category',
+                                    message: 'Invalid file category'
+                                }]
+                            });
+                        }
+
+                        if (!reqAction || !['create', 'read', 'write', 'delete', 'list'].includes(reqAction)) {
+                            return res.status(400).json({
+                                success: false,
+                                message: 'Validation failed',
+                                errors: [{
+                                    field: 'action',
+                                    message: 'Invalid action specified'
+                                }]
+                            });
+                        }
+
+                        // Continue with the file operation
+                        try {
+                            await continueFileOperation(category, req, res, database, authMiddleware, encryptionService);
+                            resolve();
+                        } catch (error) {
+                            reject(error);
+                        }
+                    });
                 });
-            }
-
-            const hasPermission = checkActionPermission(permissions, action);
-            if (!hasPermission) {
-                await authMiddleware.logActivity(req, `${category}_${action.toUpperCase()}_DENIED`, 'Insufficient permissions', false);
-                return res.status(403).json({
-                    success: false,
-                    message: `Access denied - cannot ${action} ${category.toLowerCase()} files`
-                });
-            }
-
-            // Route to appropriate action handler
-            switch (action) {
-                case 'list':
-                    return await listFiles(category, req, res, database, authMiddleware);
-                case 'read':
-                    return await readFile(category, req, res, database, authMiddleware, encryptionService);
-                case 'create':
-                    return await createFile(category, req, res, database, authMiddleware, encryptionService, upload);
-                case 'write':
-                    return await writeFile(category, req, res, database, authMiddleware, encryptionService);
-                case 'delete':
-                    return await deleteFile(category, req, res, database, authMiddleware);
-                default:
+            } else {
+                // This is a JSON request (list, read, delete)
+                const { action } = req.body;
+                
+                if (!action) {
                     return res.status(400).json({
                         success: false,
-                        message: 'Invalid action specified'
+                        message: 'Action is required in request body'
                     });
+                }
+
+                await continueFileOperation(category, req, res, database, authMiddleware, encryptionService);
             }
 
         } catch (error) {
@@ -149,8 +217,63 @@ function createFileRoutes(database, authMiddleware) {
             
             return res.status(500).json({
                 success: false,
-                message: 'File operation failed'
+                message: 'Internal server error'
             });
+        }
+    }
+
+    // Continue with the actual file operation logic
+    async function continueFileOperation(category, req, res, database, authMiddleware, encryptionService) {
+        const { action } = req.body;
+        
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: 'User authentication failed'
+            });
+        }
+        
+        const userId = req.user.id;
+        const userRole = req.user.role;
+
+        console.log(`File operation: ${action} on ${category} by user ${userId} (${userRole})`);
+
+        // Check permissions
+        const permissions = await database.getRolePermissions(userRole, category);
+        if (!permissions) {
+            await authMiddleware.logActivity(req, `${category}_${action.toUpperCase()}_DENIED`, 'No permissions', false);
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied - no permissions for this resource'
+            });
+        }
+
+        const hasPermission = checkActionPermission(permissions, action);
+        if (!hasPermission) {
+            await authMiddleware.logActivity(req, `${category}_${action.toUpperCase()}_DENIED`, 'Insufficient permissions', false);
+            return res.status(403).json({
+                success: false,
+                message: `Access denied - cannot ${action} ${category.toLowerCase()} files`
+            });
+        }
+
+        // Route to appropriate action handler
+        switch (action) {
+            case 'list':
+                return await listFiles(category, req, res, database, authMiddleware);
+            case 'read':
+                return await readFile(category, req, res, database, authMiddleware, encryptionService);
+            case 'create':
+                return await createFile(category, req, res, database, authMiddleware, encryptionService);
+            case 'write':
+                return await writeFile(category, req, res, database, authMiddleware, encryptionService);
+            case 'delete':
+                return await deleteFile(category, req, res, database, authMiddleware);
+            default:
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid action specified'
+                });
         }
     }
 
@@ -159,7 +282,7 @@ function createFileRoutes(database, authMiddleware) {
         try {
             const files = await new Promise((resolve, reject) => {
                 database.db.all(`
-                    SELECT id, filename, original_name, file_size, created_at, uploaded_by,
+                    SELECT f.id, f.filename, f.original_name, f.file_size, f.created_at, f.uploaded_by,
                            u.first_name, u.last_name
                     FROM files f
                     JOIN users u ON f.uploaded_by = u.id
@@ -271,17 +394,8 @@ function createFileRoutes(database, authMiddleware) {
     }
 
     // Create/upload new file
-    async function createFile(category, req, res, database, authMiddleware, encryptionService, upload) {
-        // Handle file upload
-        upload.single('file')(req, res, async (uploadError) => {
-            if (uploadError) {
-                console.error('Upload error:', uploadError.message);
-                return res.status(400).json({
-                    success: false,
-                    message: uploadError.message
-                });
-            }
-
+    async function createFile(category, req, res, database, authMiddleware, encryptionService) {
+        try {
             if (!req.file) {
                 return res.status(400).json({
                     success: false,
@@ -353,7 +467,13 @@ function createFileRoutes(database, authMiddleware) {
                 
                 throw error;
             }
-        });
+        } catch (error) {
+            console.error('File upload error:', error.message);
+            return res.status(500).json({
+                success: false,
+                message: 'File upload failed'
+            });
+        }
     }
 
     // Write/edit file content (for confidential text files)

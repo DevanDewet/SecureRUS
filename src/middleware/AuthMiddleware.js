@@ -150,6 +150,11 @@ class AuthMiddleware {
                     mfaTimestamp && 
                     (Date.now() - mfaTimestamp) < mfaValidityWindow;
 
+                console.log(`MFA Session Debug - User: ${req.user.id}, Action: ${action}`);
+                console.log(`Session MFA: verified=${mfaVerified}, timestamp=${mfaTimestamp}, action=${req.session.mfaAction}`);
+                console.log(`Current time: ${Date.now()}, Time diff: ${mfaTimestamp ? Date.now() - mfaTimestamp : 'N/A'}ms`);
+                console.log(`Is MFA Valid: ${isMfaValid}`);
+
                 // Check if MFA code is provided in request body
                 const mfaCode = req.body?.mfaCode;
                 let mfaCodeValid = false;
@@ -166,16 +171,30 @@ class AuthMiddleware {
 
                     if (mfaCodeValid) {
                         console.log(`MFA code verification successful for user: ${req.user.email}`);
-                        // Update session to mark MFA as verified
+                        // Update session to mark MFA as verified with action-specific key
                         req.session.mfaVerified = true;
                         req.session.mfaTimestamp = Date.now();
+                        req.session.mfaAction = action;
+                        req.session.mfaRiskScore = anomalyResult.totalRiskScore;
                     } else {
                         console.log(`MFA code verification failed for user: ${req.user.email}`);
                     }
                 }
 
-                // Require MFA verification if not verified or high risk
-                if ((!isMfaValid && !mfaCodeValid) || (anomalyResult.totalRiskScore >= 7 && !mfaCodeValid)) {
+                // For high-risk actions, require fresh MFA regardless of session
+                const requiresFreshMfa = anomalyResult.totalRiskScore >= 7;
+                
+                // Check if this is the same action with valid MFA within the window
+                const isValidMfaForAction = isMfaValid && 
+                    (req.session.mfaAction === action || req.session.mfaAction === 'CONFIDENTIAL_WRITE');
+
+                console.log(`MFA Decision - requiresFreshMfa: ${requiresFreshMfa}, isValidMfaForAction: ${isValidMfaForAction}, mfaCodeValid: ${mfaCodeValid}`);
+
+                // Require MFA verification if:
+                // 1. No valid session MFA for this action AND no valid code provided, OR
+                // 2. High risk (≥7) and no fresh MFA code provided
+                if ((!isValidMfaForAction && !mfaCodeValid) || (requiresFreshMfa && !mfaCodeValid)) {
+                    console.log(`MFA verification required - sending 403 response`);
                     return res.status(403).json({
                         success: false,
                         message: 'MFA verification required',
@@ -187,6 +206,8 @@ class AuthMiddleware {
                         }))
                     });
                 }
+
+                console.log(`MFA verification passed - proceeding with action`);
 
                 // Add risk score to request for logging
                 req.riskScore = anomalyResult.totalRiskScore;

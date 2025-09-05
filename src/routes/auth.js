@@ -133,11 +133,12 @@ function createAuthRoutes(database, authMiddleware) {
                 // Create user
                 const userId = await database.createUser({
                     email: email.toLowerCase(),
-                    password_hash: hashedPassword,
-                    first_name: firstName,
-                    last_name: lastName,
+                    password: hashedPassword,
+                    firstName: firstName,
+                    lastName: lastName,
                     role: requestedRole || 'USER',
-                    status: 'PENDING_APPROVAL'
+                    status: 'PENDING_APPROVAL',
+                    isHashed: true
                 });
 
                 console.log(`User registered: ${email} (ID: ${userId})`);
@@ -421,6 +422,14 @@ function createAuthRoutes(database, authMiddleware) {
                         message: 'Invalid MFA code'
                     });
                 }
+
+                // Update session to mark MFA as verified for operations
+                req.session.mfaVerified = true;
+                req.session.mfaTimestamp = Date.now();
+                req.session.mfaAction = operation || 'CONFIDENTIAL_WRITE';
+                req.session.mfaRiskScore = 0; // Set low risk for pre-verified operations
+
+                console.log(`MFA operation verified - setting session: action=${req.session.mfaAction}, timestamp=${req.session.mfaTimestamp}`);
 
                 await authMiddleware.logActivity(req, 'MFA_OPERATION_SUCCESS', `Successful MFA verification for operation: ${operation}`, true);
 

@@ -377,7 +377,7 @@ class AnomalyDetectionService {
         });
     }
 
-    // Check geographic anomalies (simplified - in production, use IP geolocation service)
+    // Check geographic anomalies 
     async checkGeographicAnomaly(userId, ipAddress, database) {
         // For demo purposes, we'll just check if it's a new IP
         return new Promise((resolve, reject) => {

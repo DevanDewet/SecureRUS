@@ -11,12 +11,15 @@ class SecureRUSApp {
     }
 
     init() {
-        console.log('ecureRUS Application Starting...');
+        console.log('SecureRUS Application Starting...');
         this.setupNavigation();
         this.setupEventListeners();
         
         // Ensure modal is hidden on page load
         this.closeFileModal();
+        
+        // Update navbar visibility based on current auth state
+        this.updateNavbarVisibility();
         
         // Check if user is logged in
         if (this.token) {
@@ -227,28 +230,106 @@ class SecureRUSApp {
     showSection(sectionName) {
         console.log(`Navigating to: ${sectionName}`);
         
-        // Hide all sections
+        // Get all sections
         const sections = document.querySelectorAll('.section');
-        sections.forEach(section => section.classList.add('hidden'));
-        
-        // Show selected section
         const targetSection = document.getElementById(`${sectionName}-section`);
-        if (targetSection) {
-            targetSection.classList.remove('hidden');
+        
+        // If target section doesn't exist, return
+        if (!targetSection) {
+            console.warn(`Section ${sectionName}-section not found`);
+            return;
         }
+        
+        // Add transitioning class to currently visible sections
+        sections.forEach(section => {
+            if (!section.classList.contains('hidden')) {
+                section.classList.add('transitioning');
+            }
+        });
+        
+        // After transition duration, hide all sections and show target
+        setTimeout(() => {
+            sections.forEach(section => {
+                section.classList.add('hidden');
+                section.classList.remove('transitioning');
+            });
+            
+            // Show target section
+            targetSection.classList.remove('hidden');
+            targetSection.classList.add('transitioning');
+            
+            // Force reflow then remove transitioning to fade in
+            requestAnimationFrame(() => {
+                targetSection.classList.remove('transitioning');
+            });
+            
+        }, 300);
+
+        // Update navbar active state
+        this.updateNavbarActiveState(sectionName);
 
         // Load section-specific content
         this.loadSectionContent(sectionName);
     }
 
+    updateNavbarVisibility() {
+        const loginNav = document.getElementById('login-nav');
+        const registerNav = document.getElementById('register-nav');
+        
+        if (this.user && this.token) {
+            // User is logged in - hide both login and register
+            loginNav.style.display = 'none';
+            registerNav.style.display = 'none';
+            console.log('User logged in - hiding login and register tabs');
+        } else {
+            // User is not logged in - show login, hide register by default
+            loginNav.style.display = 'block';
+            registerNav.style.display = 'block';
+            console.log('User not logged in - showing login and register tabs');
+        }
+    }
+
+    hideRegisterTab() {
+        const registerNav = document.getElementById('register-nav');
+        registerNav.style.display = 'none';
+        console.log('Registration completed - hiding register tab');
+    }
+
+    updateNavbarActiveState(sectionName) {
+        // Remove active class from all nav items
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(nav => nav.classList.remove('active'));
+        
+        // Add active class to the correct nav item
+        const targetNavItem = document.querySelector(`[data-section="${sectionName}"]`);
+        if (targetNavItem) {
+            targetNavItem.classList.add('active');
+            console.log(`Updated navbar active state to: ${sectionName}`);
+        } else {
+            // For sections that don't have direct nav items, don't show any as active
+            console.log(`No navbar item found for section: ${sectionName}`);
+        }
+    }
+
     async loadSectionContent(sectionName) {
+        console.log(`loadSectionContent called for: ${sectionName}`);
+        console.log('User object at loadSectionContent:', this.user);
+        
         if (!this.user && ['dashboard', 'files', 'profile'].includes(sectionName)) {
+            console.log('User not logged in, skipping section load');
             return; // User must be logged in
         }
 
-        if (['admin', 'analytics'].includes(sectionName) && 
-            (!this.user || !['ADMIN', 'MANAGER'].includes(this.user.role))) {
-            return; // Insufficient permissions
+        if (['admin', 'analytics'].includes(sectionName)) {
+            console.log('Checking admin/analytics permissions...');
+            console.log('User role:', this.user?.role);
+            console.log('Has permission:', this.user && ['ADMIN', 'MANAGER'].includes(this.user.role));
+            
+            if (!this.user || !['ADMIN', 'MANAGER'].includes(this.user.role)) {
+                console.log('Insufficient permissions for admin/analytics');
+                // Don't return early here - let the individual functions handle the permission check
+                // This allows for better error messages and retry logic
+            }
         }
 
         switch (sectionName) {
@@ -347,6 +428,11 @@ class SecureRUSApp {
         this.token = data.token;
         this.user = data.user;
         
+        // Set appropriate default file category based on user role
+        if (this.user?.role === 'GUEST') {
+            this.currentFileCategory = 'IMAGES';
+        }
+        
         localStorage.setItem('authToken', this.token);
         
         // Hide MFA section and reset login form
@@ -355,14 +441,15 @@ class SecureRUSApp {
         document.getElementById('mfaToken').value = '';
         
         // Show success message with safe property access
-        const firstName = this.user?.first_name || this.user?.firstName || 'User';
+        const firstName = this.getUserFirstName();
         this.showSuccess(`Welcome back, ${firstName}!`);
+        
+        // Update navbar visibility - hide login/register tabs
+        this.updateNavbarVisibility();
         
         // Navigate to dashboard
         setTimeout(() => {
             this.showSection('dashboard');
-            document.querySelector('[data-section="dashboard"]').classList.add('active');
-            document.querySelector('[data-section="login"]').classList.remove('active');
         }, 1500);
     }
 
@@ -396,10 +483,11 @@ class SecureRUSApp {
                 this.showSuccess('Registration successful! Please wait for admin approval.');
                 document.getElementById('registerForm').reset();
                 
+                // Hide register tab since user has successfully registered
+                this.hideRegisterTab();
+                
                 setTimeout(() => {
                     this.showSection('login');
-                    document.querySelector('[data-section="login"]').classList.add('active');
-                    document.querySelector('[data-section="register"]').classList.remove('active');
                 }, 2000);
             } else {
                 this.showError(data.message);
@@ -421,7 +509,11 @@ class SecureRUSApp {
             if (response.ok) {
                 const data = await response.json();
                 this.user = data.user;
+                console.log('User data received:', this.user); // Debug log
                 console.log(`Token valid - logged in as ${this.user.email}`);
+                
+                // Update navbar visibility for logged in user
+                this.updateNavbarVisibility();
             } else {
                 console.log('Token invalid or expired, logging out');
                 this.logout();
@@ -432,52 +524,170 @@ class SecureRUSApp {
         }
     }
 
+    // Helper function to safely get user name
+    getUserDisplayName() {
+        if (!this.user) return 'User';
+        
+        const firstName = (this.user.first_name || this.user.firstName || '').trim();
+        const lastName = (this.user.last_name || this.user.lastName || '').trim();
+        
+        // If we have at least a first name or last name, use them
+        if (firstName || lastName) {
+            return `${firstName} ${lastName}`.trim();
+        }
+        
+        // Otherwise use email or fallback
+        return this.user.email || 'User';
+    }
+
+    // Helper function to get first name only
+    getUserFirstName() {
+        if (!this.user) return 'User';
+        
+        const firstName = (this.user.first_name || this.user.firstName || '').trim();
+        
+        // If we have a first name, use it
+        if (firstName) {
+            return firstName;
+        }
+        
+        // Otherwise use email or fallback
+        return this.user.email || 'User';
+    }
+
     async loadDashboard() {
         const content = document.getElementById('dashboard-content');
         
+        // Get user display names safely
+        const displayName = this.getUserDisplayName();
+        const firstName = this.getUserFirstName();
+        
         content.innerHTML = `
-            <div class="welcome-user">
-                <h3>Welcome, ${this.user.first_name} ${this.user.last_name}! 👋</h3>
-                <p>Role: <strong>${this.user.role}</strong> | Status: <strong>${this.user.status}</strong></p>
-            </div>
-            
-            <div class="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 2rem 0;">
-                <div class="stat-card" style="background: #e3f2fd; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                    <div style="font-size: 2rem; color: #1976d2; margin-bottom: 0.5rem;"></div>
-                    <h4 style="color: #1565c0;">Dashboard</h4>
-                    <p style="color: #1976d2;">Overview & Stats</p>
-                </div>
-                
-                <div class="stat-card" style="background: #e8f5e8; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                    <div style="font-size: 2rem; color: #388e3c; margin-bottom: 0.5rem;"></div>
-                    <h4 style="color: #2e7d32;">Security</h4>
-                    <p style="color: #388e3c;">MFA Enabled</p>
-                </div>
-                
-                <div class="stat-card" style="background: #fff3e0; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                    <div style="font-size: 2rem; color: #f57c00; margin-bottom: 0.5rem;"></div>
-                    <h4 style="color: #ef6c00;">Files</h4>
-                    <p style="color: #f57c00;">Access Controlled</p>
+            <div class="welcome-user" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; border-radius: 15px; margin-bottom: 2rem; text-align: center;">
+                <h2 style="margin: 0 0 1rem 0; font-size: 2rem;">Welcome back, ${displayName}!</h2>
+                <div style="display: flex; justify-content: center; align-items: center; gap: 2rem; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span>Role: <strong>${this.user?.role || 'Unknown'}</strong></span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span>Security: <strong>${this.user?.mfa_enabled ? 'MFA Enabled' : 'Basic'}</strong></span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span>Today: <strong>${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong></span>
+                    </div>
                 </div>
             </div>
             
-            <div style="margin-top: 2rem;">
-                <h4>Quick Actions</h4>
-                <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;">
-                    <button class="btn" onclick="app.showSection('files')">Manage Files</button>
-                    <button class="btn" onclick="app.showSection('profile')">View Profile</button>
-                    <button class="btn" onclick="app.logout()">Logout</button>
+            <div class="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; margin-bottom: 3rem;">
+                <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3); transition: transform 0.3s ease;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">📊</div>
+                    <h3 style="margin: 0 0 0.5rem 0; font-size: 1.3rem;">Dashboard</h3>
+                    <p style="margin: 0; opacity: 0.9;">Overview & Analytics</p>
+                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.2);">
+                        <small style="opacity: 0.8;">Real-time Monitoring</small>
+                    </div>
                 </div>
+                
+                <div class="stat-card" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(17, 153, 142, 0.3); transition: transform 0.3s ease;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">🔐</div>
+                    <h3 style="margin: 0 0 0.5rem 0; font-size: 1.3rem;">Security</h3>
+                    <p style="margin: 0; opacity: 0.9;">${this.user?.mfa_enabled ? 'Multi-Factor Enabled' : 'Basic Protection'}</p>
+                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.2);">
+                        <small style="opacity: 0.8;">${this.user?.mfa_enabled ? 'Advanced Security' : 'Consider Enabling MFA'}</small>
+                    </div>
+                </div>
+                
+                <div class="stat-card" style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); color: #333; padding: 2rem; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(255, 154, 158, 0.3); transition: transform 0.3s ease;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">📁</div>
+                    <h3 style="margin: 0 0 0.5rem 0; font-size: 1.3rem;">File Management</h3>
+                    <p style="margin: 0; opacity: 0.8;">Secure File Storage</p>
+                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(0,0,0,0.1);">
+                        <small style="opacity: 0.7;">Documents, Images & Confidential</small>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                <div style="background: white; border-radius: 15px; padding: 2rem; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
+                    <h3 style="margin: 0 0 1.5rem 0; color: #333; display: flex; align-items: center; gap: 0.5rem;">
+                        Quick Actions
+                    </h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                        <button class="btn" onclick="app.showSection('files')" style="padding: 1rem; display: flex; align-items: center; gap: 0.5rem; justify-content: center;">
+                            Manage Files
+                        </button>
+                        <button class="btn" onclick="app.showSection('profile')" style="padding: 1rem; display: flex; align-items: center; gap: 0.5rem; justify-content: center; background: #28a745;">
+                            View Profile
+                        </button>
+                        ${this.user?.role === 'ADMIN' || this.user?.role === 'MANAGER' ? `
+                        <button class="btn" onclick="app.showSection('admin')" style="padding: 1rem; display: flex; align-items: center; gap: 0.5rem; justify-content: center; background: #dc3545;">
+                            Administration
+                        </button>
+                        <button class="btn" onclick="app.showSection('analytics')" style="padding: 1rem; display: flex; align-items: center; gap: 0.5rem; justify-content: center; background: #17a2b8;">
+                            Analytics
+                        </button>
+                        ` : ''}
+                    </div>
+                </div>
+                
+                <div style="background: white; border-radius: 15px; padding: 2rem; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
+                    <h3 style="margin: 0 0 1.5rem 0; color: #333; display: flex; align-items: center; gap: 0.5rem;">
+                        System Info
+                    </h3>
+                    <div style="space-y: 1rem;">
+                        <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e9ecef;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="color: #666;">Status</span>
+                                <span style="color: #28a745; font-weight: bold;">🟢 Online</span>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e9ecef;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="color: #666;">Last Login</span>
+                                <span style="color: #333; font-weight: bold;">${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="color: #666;">Session</span>
+                                <span style="color: #28a745; font-weight: bold;">Secure</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); border-radius: 15px; padding: 2rem; text-align: center; border-left: 4px solid #ff6b6b;">
+                <h3 style="color: #d63031; margin: 0 0 1rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                    Security Reminder
+                </h3>
+                <p style="color: #2d3436; margin: 0; font-size: 1rem; line-height: 1.5;">
+                    ${this.user?.mfa_enabled ? 
+                        'Your account is secured with Multi-Factor Authentication. Keep your authenticator app accessible for confidential file operations.' :
+                        'Consider enabling Multi-Factor Authentication in your profile for enhanced security when accessing confidential files.'
+                    }
+                </p>
+                ${!this.user?.mfa_enabled ? `
+                <button class="btn" onclick="app.showSection('profile')" style="margin-top: 1rem; background: #e17055; color: white;">
+                    Enable MFA Now
+                </button>
+                ` : ''}
             </div>
         `;
     }
 
     async loadFiles() {
+        // Set appropriate default category for GUEST users
+        if (this.user?.role === 'GUEST' && this.currentFileCategory !== 'IMAGES') {
+            this.currentFileCategory = 'IMAGES';
+        }
+        
         console.log(`Loading ${this.currentFileCategory} files...`);
         
-        // Update UI to show current category
+        // Update UI to show current category and hide/show tabs based on role
         this.updateFileTabsUI();
         this.updateFileInputAccept();
+        this.updateFileTabsVisibility();
         
         try {
             const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
@@ -549,6 +759,94 @@ class SecureRUSApp {
         fileInput.accept = acceptMap[this.currentFileCategory];
     }
 
+    updateFileTabsVisibility() {
+        // Define which roles can access which file categories
+        const rolePermissions = {
+            'ADMIN': ['DOCUMENTS', 'IMAGES', 'CONFIDENTIAL'],
+            'MANAGER': ['DOCUMENTS', 'IMAGES', 'CONFIDENTIAL'], 
+            'USER': ['DOCUMENTS', 'IMAGES', 'CONFIDENTIAL'],
+            'GUEST': ['IMAGES']
+        };
+
+        const userRole = this.user?.role || 'GUEST';
+        const allowedCategories = rolePermissions[userRole] || ['IMAGES'];
+
+        // Show/hide tabs based on role permissions
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            const category = btn.dataset.category;
+            if (allowedCategories.includes(category)) {
+                btn.style.display = 'inline-block';
+            } else {
+                btn.style.display = 'none';
+            }
+        });
+
+        // Hide upload form and button if user doesn't have create permission for current category
+        const uploadForm = document.getElementById('file-upload-form');
+        const showUploadBtn = document.querySelector('.show-upload-btn');
+        
+        const hasCreatePermission = this.hasPermission('create', this.currentFileCategory);
+        console.log(`Upload visibility check: User=${this.user?.role}, Category=${this.currentFileCategory}, HasCreatePermission=${hasCreatePermission}`);
+        
+        if (!hasCreatePermission) {
+            console.log('Hiding upload form - no create permission');
+            if (uploadForm) {
+                uploadForm.style.display = 'none';
+                uploadForm.classList.add('hidden');
+            }
+            if (showUploadBtn) {
+                showUploadBtn.style.display = 'none';
+                showUploadBtn.classList.add('hidden');
+            }
+        } else {
+            console.log('Showing upload form - has create permission');
+            if (uploadForm) {
+                uploadForm.style.display = 'block';
+                uploadForm.classList.remove('hidden');
+            }
+            if (showUploadBtn) {
+                showUploadBtn.style.display = 'block';
+                showUploadBtn.classList.remove('hidden');
+            }
+        }
+    }
+
+    // Check user permissions for specific operations on file categories
+    hasPermission(action, category) {
+        const userRole = this.user?.role || 'GUEST';
+        
+        // Define detailed permissions for each role and category
+        const permissions = {
+            'ADMIN': {
+                'DOCUMENTS': { create: true, read: true, write: false, delete: true },
+                'IMAGES': { create: true, read: true, write: false, delete: true },
+                'CONFIDENTIAL': { create: true, read: true, write: true, delete: true }
+            },
+            'MANAGER': {
+                'DOCUMENTS': { create: true, read: true, write: false, delete: true },
+                'IMAGES': { create: true, read: true, write: false, delete: true },
+                'CONFIDENTIAL': { create: true, read: true, write: true, delete: false }
+            },
+            'USER': {
+                'DOCUMENTS': { create: true, read: true, write: false, delete: false },
+                'IMAGES': { create: true, read: true, write: false, delete: false },
+                'CONFIDENTIAL': { create: false, read: true, write: false, delete: false }
+            },
+            'GUEST': {
+                'DOCUMENTS': { create: false, read: false, write: false, delete: false },
+                'IMAGES': { create: false, read: true, write: false, delete: false },
+                'CONFIDENTIAL': { create: false, read: false, write: false, delete: false }
+            }
+        };
+
+        const rolePerms = permissions[userRole];
+        if (!rolePerms || !rolePerms[category]) {
+            return false;
+        }
+
+        return rolePerms[category][action] === true;
+    }
+
     displayFiles(files) {
         const filesList = document.getElementById('filesList');
         
@@ -565,40 +863,35 @@ class SecureRUSApp {
                                 Uploaded by: ${this.escapeHtml(file.uploadedBy)}
                             </p>
                         </div>
-                        <div class="file-icon" style="font-size: 2rem;">
-                            ${this.getFileIcon(this.currentFileCategory)}
-                        </div>
                     </div>
                     <div class="file-actions" style="display: flex; gap: 0.5rem;">
+                        ${this.hasPermission('read', this.currentFileCategory) ? `
                         <button onclick="app.viewFile(${file.id}, '${this.escapeHtml(file.filename)}')" 
                                 class="btn" style="background: #007bff; padding: 0.5rem 1rem; font-size: 0.9rem;">
                             ${this.currentFileCategory === 'CONFIDENTIAL' ? 'View' : 'Download'}
                         </button>
+                        ` : ''}
+                        ${this.hasPermission('delete', this.currentFileCategory) ? `
                         <button onclick="app.deleteFile(${file.id}, '${this.escapeHtml(file.filename)}')" 
                                 class="btn" style="background: #dc3545; padding: 0.5rem 1rem; font-size: 0.9rem;">
                             Delete
                         </button>
+                        ` : ''}
                     </div>
                 </div>
             `).join('');
         } else {
+            const uploadMessage = this.hasPermission('create', this.currentFileCategory)
+                ? `<p style="font-size: 0.9rem;">Use the upload form above to add your first file.</p>`
+                : `<p style="font-size: 0.9rem;">Contact an administrator to upload files.</p>`;
+                
             filesList.innerHTML = `
                 <div style="text-align: center; color: #666; margin: 3rem 0;">
-                    <div style="font-size: 3rem; margin-bottom: 1rem;">${this.getFileIcon(this.currentFileCategory)}</div>
                     <p>No ${this.currentFileCategory.toLowerCase()} files uploaded yet.</p>
-                    <p style="font-size: 0.9rem;">Use the upload form above to add your first file.</p>
+                    ${uploadMessage}
                 </div>
             `;
         }
-    }
-
-    getFileIcon(category) {
-        const icons = {
-            'DOCUMENTS': '📄',
-            'IMAGES': '🖼️',
-            'CONFIDENTIAL': '🔒'
-        };
-        return icons[category] || '📁';
     }
 
     formatFileSize(bytes) {
@@ -629,6 +922,7 @@ class SecureRUSApp {
         this.currentFileCategory = category;
         this.loadFiles();
         this.clearFileSelection();
+        this.updateFileTabsVisibility(); // Update upload form visibility based on new category permissions
     }
 
     clearFileSelection() {
@@ -653,6 +947,12 @@ class SecureRUSApp {
 
         if (!file) {
             this.showError('Please select a file to upload');
+            return;
+        }
+
+        // Check if user has create permission for current file category
+        if (!this.hasPermission('create', this.currentFileCategory)) {
+            this.showError(`You don't have permission to upload ${this.currentFileCategory.toLowerCase()} files. Contact an administrator.`);
             return;
         }
 
@@ -865,6 +1165,12 @@ class SecureRUSApp {
     }
 
     async deleteFile(fileId, filename) {
+        // Check if user has delete permission for current file category
+        if (!this.hasPermission('delete', this.currentFileCategory)) {
+            this.showError(`You don't have permission to delete ${this.currentFileCategory.toLowerCase()} files. Contact an administrator.`);
+            return;
+        }
+
         if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
             return;
         }
@@ -924,6 +1230,7 @@ class SecureRUSApp {
         const modalFileEditor = document.getElementById('modalFileEditor');
         const editFileBtn = document.getElementById('editFileBtn');
         const downloadFileBtn = document.getElementById('downloadFileBtn');
+        const deleteFileBtn = document.getElementById('deleteFileBtn');
 
         if (modal && modalFileName && modalFileContent) {
             modalFileName.textContent = filename;
@@ -933,26 +1240,41 @@ class SecureRUSApp {
                 modalFileEditor.value = content;
             }
             
-            // Show/hide buttons based on file category
-            if (this.currentFileCategory === 'CONFIDENTIAL') {
-                // For confidential files: show edit button, hide download button
-                if (editFileBtn) {
+            // Show/hide buttons based on user permissions for current file category
+            
+            // Edit button - show only if user has write permission
+            if (editFileBtn) {
+                if (this.hasPermission('write', this.currentFileCategory)) {
                     editFileBtn.classList.remove('hidden');
-                    console.log('Showing edit button for confidential file');
+                    console.log('Showing edit button - user has write permission');
+                } else {
+                    editFileBtn.classList.add('hidden');
+                    console.log('Hiding edit button - user lacks write permission');
                 }
-                if (downloadFileBtn) {
+            }
+            
+            // Download button - hide for confidential files, show for others if user has read permission
+            if (downloadFileBtn) {
+                if (this.currentFileCategory === 'CONFIDENTIAL') {
                     downloadFileBtn.classList.add('hidden');
                     console.log('Hiding download button for confidential file');
-                }
-            } else {
-                // For non-confidential files: hide edit button, show download button
-                if (editFileBtn) {
-                    editFileBtn.classList.add('hidden');
-                    console.log('Hiding edit button for non-confidential file');
-                }
-                if (downloadFileBtn) {
+                } else if (this.hasPermission('read', this.currentFileCategory)) {
                     downloadFileBtn.classList.remove('hidden');
-                    console.log('Showing download button for non-confidential file');
+                    console.log('Showing download button - user has read permission');
+                } else {
+                    downloadFileBtn.classList.add('hidden');
+                    console.log('Hiding download button - user lacks read permission');
+                }
+            }
+            
+            // Delete button - show only if user has delete permission
+            if (deleteFileBtn) {
+                if (this.hasPermission('delete', this.currentFileCategory)) {
+                    deleteFileBtn.classList.remove('hidden');
+                    console.log('Showing delete button - user has delete permission');
+                } else {
+                    deleteFileBtn.classList.add('hidden');
+                    console.log('Hiding delete button - user lacks delete permission');
                 }
             }
             
@@ -1018,6 +1340,12 @@ class SecureRUSApp {
     }
 
     async saveFileContent() {
+        // Check if user has write permission for current file category
+        if (!this.hasPermission('write', this.currentFileCategory)) {
+            this.showError(`You don't have permission to edit ${this.currentFileCategory.toLowerCase()} files. Contact an administrator.`);
+            return;
+        }
+
         try {
             const modalFileEditor = document.getElementById('modalFileEditor');
             const content = modalFileEditor.value;
@@ -1030,7 +1358,7 @@ class SecureRUSApp {
             // For confidential files, require MFA
             let mfaCode = null;
             if (this.user?.mfa_enabled) {
-                mfaCode = await this.promptMFAForOperation('update this confidential file');
+                mfaCode = await this.promptMFAForOperation('CONFIDENTIAL_WRITE');
                 if (!mfaCode) {
                     return; // User cancelled MFA prompt
                 }
@@ -1079,7 +1407,7 @@ class SecureRUSApp {
                 }
                 
                 // Prompt for additional MFA
-                const additionalMfaCode = await this.promptMFAForOperation(`save this file (${anomalyMessage})`);
+                const additionalMfaCode = await this.promptMFAForOperation('CONFIDENTIAL_WRITE');
                 if (additionalMfaCode) {
                     // Retry the request with additional MFA
                     requestBody.mfaCode = additionalMfaCode;
@@ -1123,7 +1451,10 @@ class SecureRUSApp {
     async loadProfile() {
         const content = document.getElementById('profile-content');
         
-        const mfaStatus = this.user.mfa_enabled ? 
+        // Get user display names safely
+        const displayName = this.getUserDisplayName();
+        
+        const mfaStatus = this.user?.mfa_enabled ? 
             '<span style="color: #28a745;">✓ Enabled</span>' : 
             '<span style="color: #dc3545;">✗ Disabled</span>';
         
@@ -1134,22 +1465,22 @@ class SecureRUSApp {
                     
                     <div style="margin-bottom: 1rem;">
                         <label style="font-weight: 500; color: #333;">Full Name</label>
-                        <p style="color: #666; margin: 0.5rem 0;">${this.user.firstName} ${this.user.lastName}</p>
+                        <p style="color: #666; margin: 0.5rem 0;">${displayName}</p>
                     </div>
                     
                     <div style="margin-bottom: 1rem;">
                         <label style="font-weight: 500; color: #333;">Email Address</label>
-                        <p style="color: #666; margin: 0.5rem 0;">${this.user.email}</p>
+                        <p style="color: #666; margin: 0.5rem 0;">${this.user?.email || 'Not available'}</p>
                     </div>
                     
                     <div style="margin-bottom: 1rem;">
                         <label style="font-weight: 500; color: #333;">Role</label>
-                        <p style="color: #666; margin: 0.5rem 0;"><strong>${this.user.role}</strong></p>
+                        <p style="color: #666; margin: 0.5rem 0;"><strong>${this.user?.role || 'Unknown'}</strong></p>
                     </div>
                     
                     <div style="margin-bottom: 2rem;">
                         <label style="font-weight: 500; color: #333;">Account Status</label>
-                        <p style="color: #666; margin: 0.5rem 0;"><strong>${this.user.status || 'APPROVED'}</strong></p>
+                        <p style="color: #666; margin: 0.5rem 0;"><strong>${this.user?.status || 'APPROVED'}</strong></p>
                     </div>
                     
                     <button class="btn" onclick="app.logout()">Logout</button>
@@ -1355,12 +1686,73 @@ class SecureRUSApp {
         this.showError('Backup codes feature will be implemented in a future update');
     }
 
+    // Helper function to wait for an element to be available in the DOM
+    async waitForElement(elementId, timeout = 5000) {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+            
+            const checkElement = () => {
+                const element = document.getElementById(elementId);
+                if (element) {
+                    // Element exists, resolve immediately (don't wait for visibility)
+                    resolve(element);
+                    return;
+                }
+                
+                if (Date.now() - startTime >= timeout) {
+                    console.warn(`Element ${elementId} not found within ${timeout}ms, continuing anyway`);
+                    resolve(null); // Resolve with null instead of rejecting
+                    return;
+                }
+                
+                // Check again after a short delay
+                setTimeout(checkElement, 50);
+            };
+            
+            checkElement();
+        });
+    }
+
     async loadAdmin() {
+        console.log('loadAdmin called, user object:', this.user);
+        console.log('User role:', this.user?.role);
+        
+        // If user object is not available or incomplete, wait and retry multiple times
+        let retryCount = 0;
+        const maxRetries = 5;
+        
+        while ((!this.user || !this.user.role) && retryCount < maxRetries) {
+            console.log(`User object not ready, waiting and retrying... (attempt ${retryCount + 1}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            retryCount++;
+        }
+        
+        // If still not available after retries, show error
+        if (!this.user || !this.user.role) {
+            console.log('User object still not available after multiple retries');
+            document.getElementById('admin-content').innerHTML = `
+                <div style="text-align: center; color: #dc3545; padding: 2rem;">
+                    <p>User session not ready. Please try refreshing the page.</p>
+                    <button onclick="location.reload()" style="margin-top: 1rem; padding: 0.5rem 1rem; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        Refresh Page
+                    </button>
+                </div>`;
+            return;
+        }
+        
+        console.log('Role check result:', ['ADMIN', 'MANAGER'].includes(this.user?.role));
+        
         if (!['ADMIN', 'MANAGER'].includes(this.user?.role)) {
+            console.log('Access denied - insufficient privileges');
             document.getElementById('admin-content').innerHTML = '<p style="text-align: center; color: #dc3545;">Access denied. Administrator privileges required.</p>';
             return;
         }
 
+        console.log('Admin access granted, loading dashboard');
+        
+        // Wait a bit for the DOM to be ready after section switch
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
         // Load dashboard by default
         this.switchAdminTab('dashboard');
         
@@ -1369,6 +1761,8 @@ class SecureRUSApp {
     }
 
     switchAdminTab(tabName) {
+        console.log(`switchAdminTab called with: ${tabName}`);
+        
         // Update tab buttons
         document.querySelectorAll('.admin-tab-btn').forEach(btn => {
             btn.classList.remove('active');
@@ -1381,6 +1775,8 @@ class SecureRUSApp {
             activeTab.classList.add('active');
             activeTab.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
             activeTab.style.color = 'white';
+        } else {
+            console.warn(`Active tab button not found for: ${tabName}`);
         }
 
         // Hide all admin tab content
@@ -1390,14 +1786,22 @@ class SecureRUSApp {
 
         // Show selected tab content
         const selectedContent = document.getElementById(`admin-${tabName}`);
+        console.log(`Looking for element: admin-${tabName}`, selectedContent);
+        
         if (selectedContent) {
             selectedContent.classList.remove('hidden');
+            console.log(`Showed admin-${tabName} content`);
+        } else {
+            console.error(`Admin content element not found: admin-${tabName}`);
         }
 
         // Load content based on tab
         switch (tabName) {
             case 'dashboard':
-                this.loadAdminDashboard();
+                // Don't await here to avoid blocking the UI
+                this.loadAdminDashboard().catch(error => {
+                    console.error('Error loading admin dashboard:', error);
+                });
                 break;
             case 'users':
                 this.loadAllUsers();
@@ -1413,6 +1817,12 @@ class SecureRUSApp {
 
     async loadAdminDashboard() {
         try {
+            console.log('Starting admin dashboard load...');
+            
+            // Simple delay to ensure DOM is ready
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            console.log('Loading admin stats...');
             // Load system stats
             const response = await fetch(`${this.baseURL}/admin/stats`, {
                 headers: {
@@ -1448,20 +1858,39 @@ class SecureRUSApp {
                     if (files && Array.isArray(files)) {
                         files.forEach(fileGroup => {
                             totalFiles += fileGroup.count;
-                            if (fileGroup.category === 'confidential') {
-                                encryptedFiles += fileGroup.count;
+                            // Count encrypted files from the encrypted_count field (which includes all encrypted files regardless of category)
+                            if (fileGroup.encrypted_count) {
+                                encryptedFiles += fileGroup.encrypted_count;
                             }
                         });
                     }
                     
-                    // Update dashboard stats
-                    document.getElementById('totalUsers').textContent = totalUsers;
-                    document.getElementById('pendingUsers').textContent = pendingUsers;
-                    document.getElementById('totalFiles').textContent = totalFiles;
-                    document.getElementById('encryptedFiles').textContent = encryptedFiles;
+                    // Update dashboard stats with null checks and retry logic
+                    const updateStats = () => {
+                        const totalUsersEl = document.getElementById('totalUsers');
+                        const pendingUsersEl = document.getElementById('pendingUsers');
+                        const totalFilesEl = document.getElementById('totalFiles');
+                        const encryptedFilesEl = document.getElementById('encryptedFiles');
+
+                        if (totalUsersEl) totalUsersEl.textContent = totalUsers;
+                        if (pendingUsersEl) pendingUsersEl.textContent = pendingUsers;
+                        if (totalFilesEl) totalFilesEl.textContent = totalFiles;
+                        if (encryptedFilesEl) encryptedFilesEl.textContent = encryptedFiles;
+                        
+                        // Return true if all elements were found and updated
+                        return totalUsersEl && pendingUsersEl && totalFilesEl && encryptedFilesEl;
+                    };
+                    
+                    // Try to update stats immediately
+                    if (!updateStats()) {
+                        // If some elements weren't found, try again after a short delay
+                        setTimeout(() => {
+                            updateStats();
+                        }, 500);
+                    }
 
                     // Load recent activity
-                    this.displayRecentActivity(data.statistics.recentActivity || []);
+                    await this.displayRecentActivity(data.statistics.recentActivity || []);
                 } else {
                     console.error('Invalid stats response:', data);
                     this.showError('Invalid statistics data received');
@@ -1475,8 +1904,20 @@ class SecureRUSApp {
         }
     }
 
-    displayRecentActivity(activities) {
-        const container = document.getElementById('recentActivity');
+    async displayRecentActivity(activities) {
+        // Try to wait for the recentActivity container to be available
+        let container;
+        try {
+            container = await this.waitForElement('recentActivity', 1000);
+        } catch (error) {
+            console.warn('recentActivity container not found, skipping recent activity display');
+            return;
+        }
+        
+        if (!container) {
+            console.warn('recentActivity container not available, skipping recent activity display');
+            return;
+        }
         
         if (!activities || activities.length === 0) {
             container.innerHTML = '<p style="text-align: center; color: #666;">No recent activity</p>';
@@ -1541,15 +1982,15 @@ class SecureRUSApp {
                             <th style="padding: 1rem; text-align: left; color: #333;">Email</th>
                             <th style="padding: 1rem; text-align: left; color: #333;">Role</th>
                             <th style="padding: 1rem; text-align: left; color: #333;">Status</th>
-                            <th style="padding: 1rem; text-align: left; color: #333;">Last Login</th>
                             <th style="padding: 1rem; text-align: center; color: #333;">Actions</th>
+                            <th style="padding: 1rem; text-align: center; color: #333;">Delete</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${users.map(user => `
                             <tr style="border-bottom: 1px solid #e9ecef;">
                                 <td style="padding: 1rem;">
-                                    <strong>${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}</strong>
+                                    <strong>${this.escapeHtml(user.first_name || user.firstName || '')} ${this.escapeHtml(user.last_name || user.lastName || '')}</strong>
                                 </td>
                                 <td style="padding: 1rem; color: #666;">${this.escapeHtml(user.email)}</td>
                                 <td style="padding: 1rem;">
@@ -1564,19 +2005,25 @@ class SecureRUSApp {
                                         ${user.status}
                                     </span>
                                 </td>
-                                <td style="padding: 1rem; color: #666;">
-                                    ${user.lastLogin ? this.formatDate(user.lastLogin) : 'Never'}
-                                </td>
                                 <td style="padding: 1rem; text-align: center;">
-                                    <button onclick="app.openRoleModal(${user.id}, '${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}', '${user.role}')" 
+                                    <button onclick="app.openRoleModal(${user.id}, '${this.escapeHtml(user.first_name || user.firstName || '')} ${this.escapeHtml(user.last_name || user.lastName || '')}', '${user.role}')" 
                                             class="btn" style="background: #007bff; padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-right: 0.5rem;">
                                         Change Role
                                     </button>
                                     ${user.status === 'APPROVED' ? 
-                                        `<button onclick="app.revokeUser(${user.id}, '${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}')" 
+                                        `<button onclick="app.revokeUser(${user.id}, '${this.escapeHtml(user.first_name || user.firstName || '')} ${this.escapeHtml(user.last_name || user.lastName || '')}')" 
                                                  class="btn" style="background: #dc3545; padding: 0.25rem 0.75rem; font-size: 0.8rem;">
                                             Revoke
                                          </button>` : ''}
+                                </td>
+                                <td style="padding: 1rem; text-align: center;">
+                                    ${user.id !== this.user.id ? 
+                                        `<button onclick="app.deleteUser(${user.id}, '${this.escapeHtml(user.first_name || user.firstName || '')} ${this.escapeHtml(user.last_name || user.lastName || '')}')" 
+                                                 class="btn" style="background: #ffffff; border: none; padding: 0.5rem; border-radius: 5px; cursor: pointer; font-size: 1.2rem;"
+                                                 title="Delete User">
+                                            🗑️
+                                         </button>` : 
+                                        `<span style="color: #999; font-size: 0.8rem;">Cannot delete self</span>`}
                                 </td>
                             </tr>
                         `).join('')}
@@ -1630,7 +2077,7 @@ class SecureRUSApp {
                         ${users.map(user => `
                             <tr style="border-bottom: 1px solid #e9ecef;">
                                 <td style="padding: 1rem;">
-                                    <strong>${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}</strong>
+                                    <strong>${this.escapeHtml(user.first_name || user.firstName || '')} ${this.escapeHtml(user.last_name || user.lastName || '')}</strong>
                                 </td>
                                 <td style="padding: 1rem; color: #666;">${this.escapeHtml(user.email)}</td>
                                 <td style="padding: 1rem;">
@@ -1643,11 +2090,11 @@ class SecureRUSApp {
                                     ${this.formatDate(user.registeredAt)}
                                 </td>
                                 <td style="padding: 1rem; text-align: center;">
-                                    <button onclick="app.approveUser(${user.id}, '${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}')" 
+                                    <button onclick="app.approveUser(${user.id}, '${this.escapeHtml(user.first_name || user.firstName || '')} ${this.escapeHtml(user.last_name || user.lastName || '')}')" 
                                             class="btn" style="background: #28a745; padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-right: 0.5rem;">
                                         Approve
                                     </button>
-                                    <button onclick="app.rejectUser(${user.id}, '${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}')" 
+                                    <button onclick="app.rejectUser(${user.id}, '${this.escapeHtml(user.first_name || user.firstName || '')} ${this.escapeHtml(user.last_name || user.lastName || '')}')" 
                                             class="btn" style="background: #dc3545; padding: 0.25rem 0.75rem; font-size: 0.8rem;">
                                         Reject
                                     </button>
@@ -1839,6 +2286,39 @@ class SecureRUSApp {
         }
     }
 
+    async deleteUser(userId, userName) {
+        if (!confirm(`Are you sure you want to permanently delete user "${userName}"?\n\nThis action cannot be undone and will remove all user data.`)) {
+            return;
+        }
+
+        // Second confirmation for extra safety
+        if (!confirm(`Final confirmation: Delete "${userName}" permanently?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.baseURL}/admin/user/${userId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                this.showSuccess(data.message || `User "${userName}" deleted successfully`);
+                this.loadAllUsers(); // Refresh the table
+                this.loadAdminDashboard(); // Update stats
+            } else {
+                this.showError(data.message || 'Failed to delete user');
+            }
+        } catch (error) {
+            console.error('Delete user error:', error);
+            this.showError('Failed to delete user');
+        }
+    }
+
     // Role management
     openRoleModal(userId, userName, currentRole) {
         this.selectedUserId = userId;
@@ -1888,6 +2368,16 @@ class SecureRUSApp {
     }
 
     async loadAnalytics() {
+        // If user object is not available or incomplete, wait and retry multiple times
+        let retryCount = 0;
+        const maxRetries = 5;
+        
+        while ((!this.user || !this.user.role) && retryCount < maxRetries) {
+            console.log(`Analytics: User object not ready, waiting and retrying... (attempt ${retryCount + 1}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            retryCount++;
+        }
+        
         if (!['ADMIN', 'MANAGER'].includes(this.user?.role)) {
             document.getElementById('analytics-content').innerHTML = '<p style="text-align: center; color: #dc3545;">Access denied. Manager or Administrator privileges required.</p>';
             return;
@@ -1944,7 +2434,7 @@ class SecureRUSApp {
             <div class="analytics-dashboard">
                 <!-- Dashboard Header with Stats -->
                 <div class="analytics-header" style="margin-bottom: 2rem;">
-                    <h3 style="margin-bottom: 1rem;">Real-Time Security Analytics</h3>
+                    
                     <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
                         <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 10px; text-align: center;">
                             <h4 style="margin: 0; font-size: 2rem;">${logsData.totalLogs || 0}</h4>
@@ -1986,7 +2476,7 @@ class SecureRUSApp {
                         </select>
                         
                         <button onclick="app.loadAnalytics()" class="btn" style="background: #28a745; margin-left: auto;">
-                            🔄 Refresh
+                            Refresh
                         </button>
                     </div>
                 </div>
@@ -1994,7 +2484,7 @@ class SecureRUSApp {
                 <!-- Real-time Activity Monitor -->
                 <div class="activity-monitor" style="background: white; border: 1px solid #ddd; border-radius: 10px; margin-bottom: 2rem; overflow: hidden;">
                     <div style="background: #343a40; color: white; padding: 1rem; font-weight: bold;">
-                        📊 Real-Time Activity Log Monitor
+                        Real-Time Activity Log Monitor
                         <span style="float: right; font-size: 0.9rem; opacity: 0.8;">Auto-refreshes every 30s</span>
                     </div>
                     <div id="activityLogContainer" style="max-height: 400px; overflow-y: auto;">
@@ -2005,7 +2495,7 @@ class SecureRUSApp {
                 <!-- Endpoint Usage Visualization -->
                 <div class="endpoint-visualization" style="background: white; border: 1px solid #ddd; border-radius: 10px; margin-bottom: 2rem;">
                     <div style="background: #495057; color: white; padding: 1rem; font-weight: bold;">
-                        📈 Endpoint Usage Analytics
+                        Endpoint Usage Analytics
                     </div>
                     <div style="padding: 1rem;">
                         ${this.renderEndpointUsageChart(logsData.logs || [])}
@@ -2015,7 +2505,7 @@ class SecureRUSApp {
                 <!-- Security Events & Anomalies -->
                 <div class="security-events" style="background: white; border: 1px solid #ddd; border-radius: 10px;">
                     <div style="background: #dc3545; color: white; padding: 1rem; font-weight: bold;">
-                        🔒 Security Events & Anomalies
+                        Security Events & Anomalies
                     </div>
                     <div style="padding: 1rem;">
                         ${this.renderSecurityEvents(logsData.logs || [])}
@@ -2228,16 +2718,84 @@ class SecureRUSApp {
         this.token = null;
         this.user = null;
         
-        // Redirect to home
+        // Reset all sections to their logged-out state
+        this.resetSectionsToLoggedOutState();
+        
+        // Update navbar visibility - show login/register tabs again
+        this.updateNavbarVisibility();
+        
+        // Clear any refresh intervals
+        if (this.analyticsRefreshInterval) {
+            clearInterval(this.analyticsRefreshInterval);
+            this.analyticsRefreshInterval = null;
+        }
+        
+        // Redirect to home (this will now properly update navbar via showSection)
         this.showSection('home');
-        document.querySelector('[data-section="home"]').classList.add('active');
-        document.querySelectorAll('.nav-item').forEach(item => {
-            if (item.getAttribute('data-section') !== 'home') {
-                item.classList.remove('active');
-            }
-        });
         
         this.showSuccess('Logged out successfully');
+    }
+
+    resetSectionsToLoggedOutState() {
+        console.log('Resetting sections to logged-out state...');
+        
+        // Reset Profile section
+        const profileContent = document.getElementById('profile-content');
+        if (profileContent) {
+            profileContent.innerHTML = '<p style="text-align: center; color: #666; margin: 3rem 0;">Please log in to view your profile</p>';
+        }
+        
+        // Reset Analytics section
+        const analyticsContent = document.getElementById('analytics-content');
+        if (analyticsContent) {
+            analyticsContent.innerHTML = '<p style="text-align: center; color: #666; margin: 3rem 0;">Manager or Administrator access required</p>';
+        }
+        
+        // Reset Admin section - but preserve the structure
+        const adminContent = document.getElementById('admin-content');
+        if (adminContent) {
+            // Instead of replacing the entire content, just reset the dashboard stats
+            const totalUsersEl = document.getElementById('totalUsers');
+            const pendingUsersEl = document.getElementById('pendingUsers');
+            const totalFilesEl = document.getElementById('totalFiles');
+            const encryptedFilesEl = document.getElementById('encryptedFiles');
+            const recentActivityEl = document.getElementById('recentActivity');
+            
+            if (totalUsersEl) totalUsersEl.textContent = '-';
+            if (pendingUsersEl) pendingUsersEl.textContent = '-';
+            if (totalFilesEl) totalFilesEl.textContent = '-';
+            if (encryptedFilesEl) encryptedFilesEl.textContent = '-';
+            if (recentActivityEl) recentActivityEl.innerHTML = '<p style="text-align: center; color: #666;">Please log in to view recent activity</p>';
+            
+            // Hide all admin tab content
+            document.querySelectorAll('.admin-tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+        }
+        
+        // Reset file sections if they exist
+        const documentsFilesList = document.getElementById('documentsFilesList');
+        if (documentsFilesList) {
+            documentsFilesList.innerHTML = '<p style="text-align: center; color: #666; margin: 2rem 0;">Please log in to view files</p>';
+        }
+        
+        const imagesFilesList = document.getElementById('imagesFilesList');
+        if (imagesFilesList) {
+            imagesFilesList.innerHTML = '<p style="text-align: center; color: #666; margin: 2rem 0;">Please log in to view files</p>';
+        }
+        
+        const confidentialFilesList = document.getElementById('confidentialFilesList');
+        if (confidentialFilesList) {
+            confidentialFilesList.innerHTML = '<p style="text-align: center; color: #666; margin: 2rem 0;">Please log in to view files</p>';
+        }
+        
+        // Reset dashboard section
+        const dashboardContent = document.getElementById('dashboard-content');
+        if (dashboardContent) {
+            dashboardContent.innerHTML = '<p style="text-align: center; color: #666; margin: 3rem 0;">Please log in to access your dashboard</p>';
+        }
+        
+        console.log('All sections reset to logged-out state');
     }
 
     showError(message) {

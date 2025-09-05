@@ -143,42 +143,54 @@ class Database {
     }
 
     setupRolePermissions() {
-        const permissions = [
-            // Admin permissions - full access to everything
-            { role: 'ADMIN', resource: 'IMAGES', create: 1, read: 1, write: 1, delete: 1 },
-            { role: 'ADMIN', resource: 'DOCUMENTS', create: 1, read: 1, write: 1, delete: 1 },
-            { role: 'ADMIN', resource: 'CONFIDENTIAL', create: 1, read: 1, write: 1, delete: 1 },
+        // Check if permissions already exist to prevent duplicates
+        this.db.get('SELECT COUNT(*) as count FROM role_permissions', (err, row) => {
+            if (err) {
+                console.error('Error checking role permissions:', err);
+                return;
+            }
             
-            // Manager permissions
-            { role: 'MANAGER', resource: 'IMAGES', create: 1, read: 1, write: 1, delete: 1 },
-            { role: 'MANAGER', resource: 'DOCUMENTS', create: 1, read: 1, write: 1, delete: 1 },
-            { role: 'MANAGER', resource: 'CONFIDENTIAL', create: 1, read: 1, write: 1, delete: 0 },
-            
-            // User permissions
-            { role: 'USER', resource: 'IMAGES', create: 0, read: 1, write: 1, delete: 0 },
-            { role: 'USER', resource: 'DOCUMENTS', create: 0, read: 1, write: 1, delete: 0 },
-            { role: 'USER', resource: 'CONFIDENTIAL', create: 0, read: 1, write: 0, delete: 0 },
-            
-            // Guest permissions
-            { role: 'GUEST', resource: 'IMAGES', create: 0, read: 1, write: 0, delete: 0 },
-            { role: 'GUEST', resource: 'DOCUMENTS', create: 0, read: 0, write: 0, delete: 0 },
-            { role: 'GUEST', resource: 'CONFIDENTIAL', create: 0, read: 0, write: 0, delete: 0 }
-        ];
+            // Only setup permissions if none exist
+            if (row.count === 0) {
+                const permissions = [
+                    // Admin permissions - can edit only confidential files
+                    { role: 'ADMIN', resource: 'IMAGES', create: 1, read: 1, write: 0, delete: 1 },
+                    { role: 'ADMIN', resource: 'DOCUMENTS', create: 1, read: 1, write: 0, delete: 1 },
+                    { role: 'ADMIN', resource: 'CONFIDENTIAL', create: 1, read: 1, write: 1, delete: 1 },
+                    
+                    // Manager permissions - can edit only confidential files, cannot delete confidential
+                    { role: 'MANAGER', resource: 'IMAGES', create: 1, read: 1, write: 0, delete: 1 },
+                    { role: 'MANAGER', resource: 'DOCUMENTS', create: 1, read: 1, write: 0, delete: 1 },
+                    { role: 'MANAGER', resource: 'CONFIDENTIAL', create: 1, read: 1, write: 1, delete: 0 },
+                    
+                    // User permissions - can upload to images/documents, read all, can only read confidential
+                    { role: 'USER', resource: 'IMAGES', create: 1, read: 1, write: 0, delete: 0 },
+                    { role: 'USER', resource: 'DOCUMENTS', create: 1, read: 1, write: 0, delete: 0 },
+                    { role: 'USER', resource: 'CONFIDENTIAL', create: 0, read: 1, write: 0, delete: 0 },
+                    
+                    // Guest permissions - read-only images
+                    { role: 'GUEST', resource: 'IMAGES', create: 0, read: 1, write: 0, delete: 0 },
+                    { role: 'GUEST', resource: 'DOCUMENTS', create: 0, read: 0, write: 0, delete: 0 },
+                    { role: 'GUEST', resource: 'CONFIDENTIAL', create: 0, read: 0, write: 0, delete: 0 }
+                ];
 
-        const insertPermission = this.db.prepare(`
-            INSERT OR IGNORE INTO role_permissions 
-            (role, resource, can_create, can_read, can_write, can_delete) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        `);
+                const insertPermission = this.db.prepare(`
+                    INSERT INTO role_permissions 
+                    (role, resource, can_create, can_read, can_write, can_delete) 
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `);
 
-        permissions.forEach(perm => {
-            insertPermission.run([
-                perm.role, perm.resource, perm.create, 
-                perm.read, perm.write, perm.delete
-            ]);
+                permissions.forEach(perm => {
+                    insertPermission.run([
+                        perm.role, perm.resource, perm.create, 
+                        perm.read, perm.write, perm.delete
+                    ]);
+                });
+
+                insertPermission.finalize();
+                console.log('Role permissions initialized');
+            }
         });
-
-        insertPermission.finalize();
     }
 
     async createDefaultAdmin() {

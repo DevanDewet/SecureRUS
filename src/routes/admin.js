@@ -259,20 +259,38 @@ function createAdminRoutes(database, authMiddleware) {
                     });
                 }
 
-                // Update user role
-                await database.db.run(`
-                    UPDATE users 
-                    SET role = ?
-                    WHERE id = ?
-                `, [role, userId]);
+                // Update user role and status if needed
+                // If user is currently REVOKED, approve them when role is changed
+                if (user.status === 'REVOKED') {
+                    await database.db.run(`
+                        UPDATE users 
+                        SET role = ?, status = 'APPROVED'
+                        WHERE id = ?
+                    `, [role, userId]);
+                    
+                    await authMiddleware.logActivity(req, 'STATUS_CHANGED', `User ${user.email} status changed from REVOKED to APPROVED due to role assignment`, true);
+                } else {
+                    // Just update the role if status is not REVOKED
+                    await database.db.run(`
+                        UPDATE users 
+                        SET role = ?
+                        WHERE id = ?
+                    `, [role, userId]);
+                }
 
                 await authMiddleware.logActivity(req, 'ROLE_ASSIGNED', `User ${user.email} assigned role: ${role}`, true);
 
-                console.log(`Role assigned: ${user.email} -> ${role} by ${req.user.email}`);
+                const statusMessage = user.status === 'REVOKED' 
+                    ? `Role assigned and user approved: ${user.email} -> ${role} by ${req.user.email}`
+                    : `Role assigned: ${user.email} -> ${role} by ${req.user.email}`;
+                
+                console.log(statusMessage);
 
                 res.json({
                     success: true,
-                    message: 'Role assigned successfully'
+                    message: user.status === 'REVOKED' 
+                        ? 'Role assigned and user approved successfully' 
+                        : 'Role assigned successfully'
                 });
 
             } catch (error) {
@@ -315,7 +333,8 @@ function createAdminRoutes(database, authMiddleware) {
                         SELECT 
                             category,
                             COUNT(*) as count,
-                            SUM(file_size) as total_size
+                            SUM(file_size) as total_size,
+                            SUM(CASE WHEN is_encrypted = 1 THEN 1 ELSE 0 END) as encrypted_count
                         FROM files 
                         GROUP BY category
                         ORDER BY category
@@ -485,6 +504,69 @@ function createAdminRoutes(database, authMiddleware) {
                 res.status(500).json({
                     success: false,
                     message: 'Failed to get audit logs'
+                });
+            }
+        }
+    );
+
+    // Delete user endpoint (admin only)
+    router.delete('/user/:userId',
+        authMiddleware.authenticateToken(),
+        authMiddleware.requireRole(['ADMIN']),
+        async (req, res) => {
+            try {
+                const { userId } = req.params;
+                const currentUserId = req.user.id;
+
+                // Prevent admin from deleting themselves
+                if (parseInt(userId) === currentUserId) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Cannot delete your own account'
+                    });
+                }
+
+                // Get user details before deletion for logging
+                const userToDelete = await new Promise((resolve, reject) => {
+                    database.db.get(`
+                        SELECT id, email, first_name, last_name, role 
+                        FROM users WHERE id = ?
+                    `, [userId], (err, row) => {
+                        if (err) reject(err);
+                        else resolve(row);
+                    });
+                });
+
+                if (!userToDelete) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'User not found'
+                    });
+                }
+
+                // Delete user from database
+                await new Promise((resolve, reject) => {
+                    database.db.run(`DELETE FROM users WHERE id = ?`, [userId], function(err) {
+                        if (err) reject(err);
+                        else resolve(this.changes);
+                    });
+                });
+
+                await authMiddleware.logActivity(req, 'ADMIN_DELETE_USER', 
+                    `Deleted user: ${userToDelete.email} (${userToDelete.first_name} ${userToDelete.last_name})`, true);
+
+                res.json({
+                    success: true,
+                    message: `User ${userToDelete.first_name} ${userToDelete.last_name} has been deleted successfully`
+                });
+
+            } catch (error) {
+                console.error('Delete user error:', error.message);
+                await authMiddleware.logActivity(req, 'ADMIN_ERROR', error.message, false);
+                
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to delete user'
                 });
             }
         }

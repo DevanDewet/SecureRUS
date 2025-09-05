@@ -50,7 +50,7 @@
 
         .content {
             display: flex;
-            min-height: 60vh;
+            min-height: 85vh;
         }
 
         .sidebar {
@@ -87,6 +87,9 @@
         .main-content {
             flex: 1;
             padding: 2rem;
+            min-height: 85vh;
+            display: flex;
+            flex-direction: column;
         }
 
         .welcome-section {
@@ -235,6 +238,32 @@
             display: flex;
         }
 
+        .section {
+            min-height: 85vh;
+            width: 100%;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .section.hidden {
+            display: none;
+        }
+
+        .section.transitioning {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2) !important;
+        }
+
+        .dashboard-stats .stat-card {
+            cursor: pointer;
+        }
+
         @media (max-width: 768px) {
             .content {
                 flex-direction: column;
@@ -261,21 +290,18 @@
         <header class="header">
             <h1>SecureRUS</h1>
             <p>Role-Based Access Control System with Multi-Factor Authentication</p>
-            <div style="margin-top: 1rem;">
-                <span class="status-indicator status-online"></span>
-                <span>System Status: Online</span>
-            </div>
+           
         </header>
 
         <div class="content">
             <nav class="sidebar">
                 <a href="#" class="nav-item active" data-section="home">
-                    🏠 Home
+                    Home
                 </a>
-                <a href="#" class="nav-item" data-section="login">
+                <a href="#" class="nav-item" id="login-nav" data-section="login">
                     Login
                 </a>
-                <a href="#" class="nav-item" data-section="register">
+                <a href="#" class="nav-item" id="register-nav" data-section="register">
                     Register
                 </a>
                 <a href="#" class="nav-item" data-section="dashboard">
@@ -300,30 +326,25 @@
                 <div id="home-section" class="section">
                     <div class="welcome-section">
                         <h2>Welcome to SecureRUS</h2>
-                        <p>
-                            A comprehensive security platform designed for the University of Pretoria's COS 330 practical. 
-                            Our system implements advanced role-based access control with multi-factor authentication, 
-                            file encryption, and real-time anomaly detection to ensure the highest level of security 
-                            for your digital assets.
-                        </p>
+                      
 
                         <div class="action-cards">
                             <div class="action-card">
-                                <div class="icon"></div>
+                                <div class="icon">🔐</div>
                                 <h3>Secure Authentication</h3>
                                 <p>Multi-factor authentication with TOTP support and backup codes for ultimate security</p>
                                 <button class="btn" onclick="showSection('login')">Get Started</button>
                             </div>
 
                             <div class="action-card">
-                                <div class="icon"></div>
+                                <div class="icon">👥</div>
                                 <h3>Role-Based Access</h3>
                                 <p>Four distinct user roles (Admin, Manager, User, Guest) with granular permissions</p>
                                 <button class="btn" onclick="showSection('register')">Create Account</button>
                             </div>
 
                             <div class="action-card">
-                                <div class="icon"></div>
+                                <div class="icon">🛡️</div>
                                 <h3>File Protection</h3>
                                 <p>AES-256 encryption for confidential files with category-based access control</p>
                                 <button class="btn" onclick="showSection('files')">Manage Files</button>
@@ -332,7 +353,7 @@
 
                         <div class="features-grid">
                             <div class="feature-item">
-                                <div class="feature-icon"></div>
+                                <div class="feature-icon">🔍</div>
                                 <div class="feature-content">
                                     <h4>Anomaly Detection</h4>
                                     <p>Real-time monitoring with risk-based alerting system</p>
@@ -340,7 +361,7 @@
                             </div>
 
                             <div class="feature-item">
-                                <div class="feature-icon"></div>
+                                <div class="feature-icon">📊</div>
                                 <div class="feature-content">
                                     <h4>Comprehensive Audit</h4>
                                     <p>Complete activity logging with detailed security metrics</p>
@@ -356,7 +377,7 @@
                             </div>
 
                             <div class="feature-item">
-                                <div class="feature-icon"></div>
+                                <div class="feature-icon">🔒</div>
                                 <div class="feature-content">
                                     <h4>Zero-Trust Security</h4>
                                     <p>Every action is verified and authenticated</p>
@@ -460,6 +481,7 @@
                                     <option value="USER">User - Standard file access</option>
                                     <option value="MANAGER">Manager - Team management access</option>
                                     <option value="ADMIN">Admin - Full system access</option>
+                                    <option value="GUEST">Guest - Read-only image access</option>
                                 </select>
                             </div>
 
@@ -508,7 +530,7 @@
                         </div>
 
                         <!-- Upload Section -->
-                        <div class="upload-section" style="background: #f8f9fa; padding: 2rem; border-radius: 15px; margin-bottom: 2rem;">
+                        <div id="file-upload-form" class="upload-section show-upload-btn" style="background: #f8f9fa; padding: 2rem; border-radius: 15px; margin-bottom: 2rem;">
                             <h3 style="color: #333; margin-bottom: 1rem;">Upload New File</h3>
                             <div class="upload-form">
                                 <div class="file-input-container" style="margin-bottom: 1rem;">
@@ -549,15 +571,15 @@
                         </div>
 
                         <!-- File View Modal -->
-                        <div id="fileViewModal" class="modal hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
-                            <div class="modal-content" style="background: white; border-radius: 15px; padding: 2rem; max-width: 80%; max-height: 80%; overflow: auto;">
+                        <div id="fileViewModal" class="modal hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; align-items: center; justify-content: center;">
+                            <div class="modal-content" style="background: white; border-radius: 20px; padding: 2rem; max-width: 80%; max-height: 80%; overflow: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
                                 <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #e9ecef; padding-bottom: 1rem;">
                                     <h3 id="modalFileName" style="color: #333;"></h3>
                                     <button id="closeModalBtn" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">✖️</button>
                                 </div>
-                                <div id="modalFileContent" style="white-space: pre-wrap; font-family: monospace; background: #f8f9fa; padding: 1rem; border-radius: 10px; max-height: 400px; overflow: auto;">
+                                <div id="modalFileContent" style="white-space: pre-wrap; font-family: monospace; background: #f8f9fa; padding: 1rem; border-radius: 15px; max-height: 400px; overflow: auto; border: 1px solid #e9ecef;">
                                 </div>
-                                <textarea id="modalFileEditor" class="hidden" style="width: 100%; height: 400px; font-family: monospace; background: #f8f9fa; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; resize: vertical;"></textarea>
+                                <textarea id="modalFileEditor" class="hidden" style="width: 100%; height: 400px; font-family: monospace; background: #f8f9fa; padding: 1rem; border: 1px solid #ddd; border-radius: 15px; resize: vertical;"></textarea>
                                 <div class="modal-actions" style="margin-top: 1rem; display: flex; gap: 1rem;">
                                     <button id="editFileBtn" class="btn" style="background: #28a745;">Edit</button>
                                     <button id="saveFileBtn" class="btn hidden" style="background: #007bff;">Save</button>
@@ -719,6 +741,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js?v=1.5"></script>
+    <script src="/js/app.js?v=3.0"></script>
 </body>
 </html>

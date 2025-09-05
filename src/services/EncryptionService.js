@@ -4,11 +4,10 @@ const path = require('path');
 
 class EncryptionService {
     constructor() {
-        this.algorithm = 'aes-256-gcm';
+        this.algorithm = 'aes-256-cbc';
         this.keyLength = 32; // 256 bits
         this.ivLength = 16;  // 128 bits
-        this.tagLength = 16; // 128 bits
-        this.saltLength = 64; // 512 bits
+        this.iterations = 100000; // PBKDF2 iterations
         
         // Master key from environment (should be 32 characters)
         this.masterKey = this.deriveMasterKey();
@@ -28,15 +27,17 @@ class EncryptionService {
 
     // Generate a file-specific encryption key
     generateFileKey(filename, userId) {
-        const data = `${filename}-${userId}-${Date.now()}`;
-        const salt = crypto.randomBytes(this.saltLength);
+        const timestamp = Date.now();
+        const data = `${filename}-${userId}-${timestamp}`;
+        const salt = crypto.randomBytes(32);
         
         // Derive key using PBKDF2
-        const fileKey = crypto.pbkdf2Sync(data, salt, 100000, this.keyLength, 'sha512');
+        const fileKey = crypto.pbkdf2Sync(data, salt, this.iterations, this.keyLength, 'sha512');
         
         return {
             key: fileKey,
             salt: salt,
+            timestamp: timestamp,
             keyHash: crypto.createHash('sha256').update(fileKey).digest('hex')
         };
     }
@@ -50,28 +51,23 @@ class EncryptionService {
             const fileContent = await fs.readFile(filePath);
             
             // Generate file-specific key
-            const { key, salt, keyHash } = this.generateFileKey(filename, userId);
+            const { key, salt, timestamp, keyHash } = this.generateFileKey(filename, userId);
             
             // Create cipher
             const iv = crypto.randomBytes(this.ivLength);
-            const cipher = crypto.createCipher(this.algorithm, key);
-            cipher.setAAD(Buffer.from(filename, 'utf8'));
+            const cipher = crypto.createCipheriv(this.algorithm, key, iv);
             
             // Encrypt content
             let encrypted = cipher.update(fileContent);
             encrypted = Buffer.concat([encrypted, cipher.final()]);
             
-            // Get authentication tag
-            const tag = cipher.getAuthTag();
-            
             // Create encrypted file structure
             const encryptedData = {
                 iv: iv.toString('hex'),
-                tag: tag.toString('hex'),
                 salt: salt.toString('hex'),
                 data: encrypted.toString('hex'),
                 algorithm: this.algorithm,
-                timestamp: Date.now()
+                timestamp: timestamp
             };
             
             // Write encrypted file
@@ -104,13 +100,17 @@ class EncryptionService {
             const encryptedDataStr = await fs.readFile(encryptedPath, 'utf8');
             const encryptedData = JSON.parse(encryptedDataStr);
             
-            // Reconstruct file key
-            const { key } = this.reconstructFileKey(filename, userId, encryptedData.salt, keyHash);
+            // Ensure we have the timestamp from the encrypted data
+            if (!encryptedData.timestamp) {
+                throw new Error('Missing timestamp in encrypted data');
+            }
+            
+            // Reconstruct file key using the stored timestamp
+            const { key } = this.reconstructFileKey(filename, userId, encryptedData.salt, keyHash, encryptedData.timestamp);
             
             // Create decipher
-            const decipher = crypto.createDecipher(this.algorithm, key);
-            decipher.setAuthTag(Buffer.from(encryptedData.tag, 'hex'));
-            decipher.setAAD(Buffer.from(filename, 'utf8'));
+            const iv = Buffer.from(encryptedData.iv, 'hex');
+            const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
             
             // Decrypt content
             let decrypted = decipher.update(Buffer.from(encryptedData.data, 'hex'));
@@ -127,19 +127,16 @@ class EncryptionService {
     }
 
     // Reconstruct file key for decryption
-    reconstructFileKey(filename, userId, saltHex, expectedKeyHash) {
+    reconstructFileKey(filename, userId, saltHex, expectedKeyHash, timestamp) {
         const salt = Buffer.from(saltHex, 'hex');
         
-        // Try different timestamp variations (brute force approach for demo)
-        // In production, you'd store the exact timestamp or use a different approach
-        const baseData = `${filename}-${userId}`;
-        
-        // For now, we'll use PBKDF2 with the salt to recreate the key
-        // This is a simplified approach - in production, you'd need better key management
-        const key = crypto.pbkdf2Sync(baseData, salt, 100000, this.keyLength, 'sha512');
+        // Use the same key generation logic as generateFileKey with the stored timestamp
+        const keySource = `${filename}-${userId}-${timestamp}`;
+        const key = crypto.pbkdf2Sync(keySource, salt, this.iterations, this.keyLength, 'sha512');
         const keyHash = crypto.createHash('sha256').update(key).digest('hex');
         
         if (keyHash !== expectedKeyHash) {
+            console.error(`Key verification failed. Expected: ${expectedKeyHash}, Got: ${keyHash}`);
             throw new Error('Key verification failed - unauthorized access attempt');
         }
         
@@ -149,25 +146,21 @@ class EncryptionService {
     // Encrypt text content (for confidential text files)
     encryptText(text, filename, userId) {
         try {
-            const { key, salt, keyHash } = this.generateFileKey(filename, userId);
+            const { key, salt, timestamp, keyHash } = this.generateFileKey(filename, userId);
             
             const iv = crypto.randomBytes(this.ivLength);
-            const cipher = crypto.createCipher(this.algorithm, key);
-            cipher.setAAD(Buffer.from(filename, 'utf8'));
+            const cipher = crypto.createCipheriv(this.algorithm, key, iv);
             
             let encrypted = cipher.update(text, 'utf8');
             encrypted = Buffer.concat([encrypted, cipher.final()]);
             
-            const tag = cipher.getAuthTag();
-            
             return {
                 iv: iv.toString('hex'),
-                tag: tag.toString('hex'),
                 salt: salt.toString('hex'),
                 data: encrypted.toString('hex'),
                 keyHash,
                 algorithm: this.algorithm,
-                timestamp: Date.now()
+                timestamp: timestamp
             };
             
         } catch (error) {
@@ -179,11 +172,15 @@ class EncryptionService {
     // Decrypt text content
     decryptText(encryptedData, filename, userId) {
         try {
-            const { key } = this.reconstructFileKey(filename, userId, encryptedData.salt, encryptedData.keyHash);
+            // Ensure we have the timestamp from the encrypted data
+            if (!encryptedData.timestamp) {
+                throw new Error('Missing timestamp in encrypted data');
+            }
             
-            const decipher = crypto.createDecipher(this.algorithm, key);
-            decipher.setAuthTag(Buffer.from(encryptedData.tag, 'hex'));
-            decipher.setAAD(Buffer.from(filename, 'utf8'));
+            const { key } = this.reconstructFileKey(filename, userId, encryptedData.salt, encryptedData.keyHash, encryptedData.timestamp);
+            
+            const iv = Buffer.from(encryptedData.iv, 'hex');
+            const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
             
             let decrypted = decipher.update(Buffer.from(encryptedData.data, 'hex'), null, 'utf8');
             decrypted += decipher.final('utf8');

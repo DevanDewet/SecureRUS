@@ -13,8 +13,20 @@ function createFileRoutes(database, authMiddleware) {
     // Configure multer for file uploads
     const storage = multer.diskStorage({
         destination: function (req, file, cb) {
-            const category = req.body.category || 'DOCUMENTS';
+            // Determine category from the URL path
+            const urlPath = req.path;
+            let category = 'DOCUMENTS'; // default
+            
+            if (urlPath.includes('/images')) {
+                category = 'IMAGES';
+            } else if (urlPath.includes('/documents')) {
+                category = 'DOCUMENTS';
+            } else if (urlPath.includes('/confidential')) {
+                category = 'CONFIDENTIAL';
+            }
+            
             const uploadPath = path.join(__dirname, '../../uploads', category.toLowerCase());
+            console.log(`Upload destination: ${uploadPath} for category: ${category}`);
             cb(null, uploadPath);
         },
         filename: function (req, file, cb) {

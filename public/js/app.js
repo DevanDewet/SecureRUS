@@ -73,6 +73,9 @@ class SecureRUSApp {
 
         // File management event listeners
         this.setupFileEventListeners();
+
+        // Admin event listeners
+        this.setupAdminEventListeners();
     }
 
     setupFileEventListeners() {
@@ -123,6 +126,9 @@ class SecureRUSApp {
         // Download and delete buttons in modal
         const downloadFileBtn = document.getElementById('downloadFileBtn');
         const deleteFileBtn = document.getElementById('deleteFileBtn');
+        const editFileBtn = document.getElementById('editFileBtn');
+        const saveFileBtn = document.getElementById('saveFileBtn');
+        const cancelEditBtn = document.getElementById('cancelEditBtn');
         
         if (downloadFileBtn) {
             downloadFileBtn.addEventListener('click', () => {
@@ -140,6 +146,24 @@ class SecureRUSApp {
             });
         }
 
+        if (editFileBtn) {
+            editFileBtn.addEventListener('click', () => {
+                this.enterEditMode();
+            });
+        }
+
+        if (saveFileBtn) {
+            saveFileBtn.addEventListener('click', () => {
+                this.saveFileContent();
+            });
+        }
+
+        if (cancelEditBtn) {
+            cancelEditBtn.addEventListener('click', () => {
+                this.exitEditMode();
+            });
+        }
+
         // Modal background click to close
         const fileViewModal = document.getElementById('fileViewModal');
         if (fileViewModal) {
@@ -148,6 +172,55 @@ class SecureRUSApp {
                     this.closeFileModal();
                 }
             });
+        }
+    }
+
+    setupAdminEventListeners() {
+        // Admin tab switching
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('admin-tab-btn')) {
+                this.switchAdminTab(e.target.dataset.tab);
+            }
+        });
+
+        // Admin refresh buttons
+        const refreshUsersBtn = document.getElementById('refreshUsersBtn');
+        const refreshPendingBtn = document.getElementById('refreshPendingBtn');
+        const refreshAuditBtn = document.getElementById('refreshAuditBtn');
+
+        if (refreshUsersBtn) {
+            refreshUsersBtn.addEventListener('click', () => this.loadAllUsers());
+        }
+
+        if (refreshPendingBtn) {
+            refreshPendingBtn.addEventListener('click', () => this.loadPendingUsers());
+        }
+
+        if (refreshAuditBtn) {
+            refreshAuditBtn.addEventListener('click', () => this.loadAuditLogs());
+        }
+
+        // Role modal events
+        const closeRoleModalBtn = document.getElementById('closeRoleModalBtn');
+        const cancelRoleBtn = document.getElementById('cancelRoleBtn');
+        const assignRoleBtn = document.getElementById('assignRoleBtn');
+
+        if (closeRoleModalBtn) {
+            closeRoleModalBtn.addEventListener('click', () => this.closeRoleModal());
+        }
+
+        if (cancelRoleBtn) {
+            cancelRoleBtn.addEventListener('click', () => this.closeRoleModal());
+        }
+
+        if (assignRoleBtn) {
+            assignRoleBtn.addEventListener('click', () => this.assignRole());
+        }
+
+        // Audit filter
+        const auditFilter = document.getElementById('auditFilter');
+        if (auditFilter) {
+            auditFilter.addEventListener('change', () => this.loadAuditLogs());
         }
     }
 
@@ -232,14 +305,14 @@ class SecureRUSApp {
     }
 
     async verifyMFA() {
-        const mfaToken = document.getElementById('mfaToken').value;
+        const mfaCode = document.getElementById('mfaToken').value;
         
-        if (mfaToken.length !== 6) {
+        if (mfaCode.length !== 6) {
             this.showError('Please enter a 6-digit MFA code');
             return;
         }
 
-        console.log('Verifying MFA token...');
+        console.log('Verifying MFA code...');
 
         try {
             const response = await fetch(`${this.baseURL}/auth/verify-mfa`, {
@@ -249,7 +322,7 @@ class SecureRUSApp {
                 },
                 body: JSON.stringify({ 
                     tempToken: this.tempToken,
-                    mfaToken: mfaToken 
+                    mfaCode: mfaCode 
                 })
             });
 
@@ -583,6 +656,16 @@ class SecureRUSApp {
             return;
         }
 
+        let mfaCode = null;
+
+        // Check if this is a confidential file operation and user has MFA enabled
+        if (this.currentFileCategory === 'CONFIDENTIAL' && this.user?.mfa_enabled) {
+            mfaCode = await this.promptMFAForOperation('upload this confidential file');
+            if (!mfaCode) {
+                return; // User cancelled or failed MFA
+            }
+        }
+
         // Show upload progress
         this.showUploadProgress();
 
@@ -590,6 +673,11 @@ class SecureRUSApp {
         formData.append('file', file);
         formData.append('category', this.currentFileCategory);
         formData.append('action', 'create');
+        
+        // Add MFA code if we have one
+        if (mfaCode) {
+            formData.append('mfaCode', mfaCode);
+        }
 
         try {
             console.log(`Uploading ${file.name} to ${this.currentFileCategory} category...`);
@@ -656,31 +744,66 @@ class SecureRUSApp {
             console.log(`Viewing file: ${filename} (ID: ${fileId})`);
 
             if (this.currentFileCategory === 'CONFIDENTIAL') {
-                // For confidential files, get content via API
-                const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${this.token}`
-                    },
-                    body: JSON.stringify({
-                        action: 'read',
-                        category: this.currentFileCategory.toUpperCase(),
-                        fileId: fileId
-                    })
-                });
+                // For confidential files, require MFA first
+                if (this.user.mfa_enabled) {
+                    const mfaCode = await this.promptMFAForOperation('view this confidential file');
+                    if (!mfaCode) {
+                        return; // User cancelled MFA prompt
+                    }
 
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.content) {
-                        // Show content in modal for confidential files
-                        this.showFileModal(filename, data.content);
+                    // Make API call with MFA code
+                    const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${this.token}`
+                        },
+                        body: JSON.stringify({
+                            action: 'read',
+                            category: this.currentFileCategory.toUpperCase(),
+                            fileId: fileId,
+                            mfaCode: mfaCode
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.content) {
+                            // Show content in modal for confidential files
+                            this.showFileModal(filename, data.content);
+                        } else {
+                            this.showError('Failed to retrieve file content');
+                        }
                     } else {
-                        this.showError('Failed to retrieve file content');
+                        const errorData = await response.json();
+                        this.showError(errorData.message || 'Failed to access file');
                     }
                 } else {
-                    const errorData = await response.json();
-                    this.showError(errorData.message || 'Failed to access file');
+                    // No MFA enabled, make direct call
+                    const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${this.token}`
+                        },
+                        body: JSON.stringify({
+                            action: 'read',
+                            category: this.currentFileCategory.toUpperCase(),
+                            fileId: fileId
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.content) {
+                            this.showFileModal(filename, data.content);
+                        } else {
+                            this.showError('Failed to retrieve file content');
+                        }
+                    } else {
+                        const errorData = await response.json();
+                        this.showError(errorData.message || 'Failed to access file');
+                    }
                 }
             } else {
                 // For images and documents, directly download the file
@@ -696,56 +819,32 @@ class SecureRUSApp {
         try {
             console.log(`Downloading file: ${filename} (ID: ${fileId})`);
 
+            // Prevent downloading confidential files
             if (this.currentFileCategory === 'CONFIDENTIAL') {
-                // For confidential files, get content via API
-                const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${this.token}`
-                    },
-                    body: JSON.stringify({
-                        action: 'read',
-                        category: this.currentFileCategory.toUpperCase(),
-                        fileId: fileId
-                    })
-                });
+                this.showError('Download is not allowed for confidential files. Use the View feature instead.');
+                return;
+            }
 
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.content) {
-                        // For confidential files, create downloadable content
-                        const blob = new Blob([data.content], { type: 'text/plain' });
-                        this.triggerDownload(blob, filename);
-                    } else {
-                        this.showError('Failed to download file');
-                    }
-                } else {
-                    const errorData = await response.json();
-                    this.showError(errorData.message || 'Failed to download file');
-                }
+            // For images and documents, use direct download request
+            const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify({
+                    action: 'read',
+                    category: this.currentFileCategory.toUpperCase(),
+                    fileId: fileId
+                })
+            });
+
+            if (response.ok) {
+                // For non-confidential files, the server sends the file directly
+                const blob = await response.blob();
+                this.triggerDownload(blob, filename);
             } else {
-                // For images and documents, use direct download request
-                const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${this.token}`
-                    },
-                    body: JSON.stringify({
-                        action: 'read',
-                        category: this.currentFileCategory.toUpperCase(),
-                        fileId: fileId
-                    })
-                });
-
-                if (response.ok) {
-                    // For non-confidential files, the server sends the file directly
-                    const blob = await response.blob();
-                    this.triggerDownload(blob, filename);
-                } else {
-                    this.showError('Failed to download file');
-                }
+                this.showError('Failed to download file');
             }
         } catch (error) {
             console.error('Download error:', error);
@@ -770,8 +869,29 @@ class SecureRUSApp {
             return;
         }
 
+        let mfaCode = null;
+
+        // Check if this is a confidential file operation and user has MFA enabled
+        if (this.currentFileCategory === 'CONFIDENTIAL' && this.user?.mfa_enabled) {
+            mfaCode = await this.promptMFAForOperation('delete this confidential file');
+            if (!mfaCode) {
+                return; // User cancelled or failed MFA
+            }
+        }
+
         try {
             console.log(`Deleting file: ${filename} (ID: ${fileId})`);
+
+            const requestBody = {
+                action: 'delete',
+                category: this.currentFileCategory.toUpperCase(),
+                fileId: fileId
+            };
+
+            // Add MFA code if we have one
+            if (mfaCode) {
+                requestBody.mfaCode = mfaCode;
+            }
 
             const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
                 method: 'POST',
@@ -779,11 +899,7 @@ class SecureRUSApp {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${this.token}`
                 },
-                body: JSON.stringify({
-                    action: 'delete',
-                    category: this.currentFileCategory.toUpperCase(),
-                    fileId: fileId
-                })
+                body: JSON.stringify(requestBody)
             });
 
             const data = await response.json();
@@ -805,10 +921,44 @@ class SecureRUSApp {
         const modal = document.getElementById('fileViewModal');
         const modalFileName = document.getElementById('modalFileName');
         const modalFileContent = document.getElementById('modalFileContent');
+        const modalFileEditor = document.getElementById('modalFileEditor');
+        const editFileBtn = document.getElementById('editFileBtn');
+        const downloadFileBtn = document.getElementById('downloadFileBtn');
 
         if (modal && modalFileName && modalFileContent) {
             modalFileName.textContent = filename;
             modalFileContent.textContent = content;
+            
+            if (modalFileEditor) {
+                modalFileEditor.value = content;
+            }
+            
+            // Show/hide buttons based on file category
+            if (this.currentFileCategory === 'CONFIDENTIAL') {
+                // For confidential files: show edit button, hide download button
+                if (editFileBtn) {
+                    editFileBtn.classList.remove('hidden');
+                    console.log('Showing edit button for confidential file');
+                }
+                if (downloadFileBtn) {
+                    downloadFileBtn.classList.add('hidden');
+                    console.log('Hiding download button for confidential file');
+                }
+            } else {
+                // For non-confidential files: hide edit button, show download button
+                if (editFileBtn) {
+                    editFileBtn.classList.add('hidden');
+                    console.log('Hiding edit button for non-confidential file');
+                }
+                if (downloadFileBtn) {
+                    downloadFileBtn.classList.remove('hidden');
+                    console.log('Showing download button for non-confidential file');
+                }
+            }
+            
+            // Ensure we're in view mode initially
+            this.exitEditMode(false);
+            
             modal.classList.remove('hidden');
         }
     }
@@ -822,17 +972,169 @@ class SecureRUSApp {
         this.currentFileName = null;
     }
 
+    enterEditMode() {
+        const modalFileContent = document.getElementById('modalFileContent');
+        const modalFileEditor = document.getElementById('modalFileEditor');
+        const editFileBtn = document.getElementById('editFileBtn');
+        const saveFileBtn = document.getElementById('saveFileBtn');
+        const cancelEditBtn = document.getElementById('cancelEditBtn');
+
+        // Hide content display and show editor
+        modalFileContent.classList.add('hidden');
+        modalFileEditor.classList.remove('hidden');
+
+        // Hide edit button, show save and cancel
+        editFileBtn.classList.add('hidden');
+        saveFileBtn.classList.remove('hidden');
+        cancelEditBtn.classList.remove('hidden');
+
+        // Focus on the editor
+        modalFileEditor.focus();
+    }
+
+    exitEditMode(restoreOriginal = true) {
+        const modalFileContent = document.getElementById('modalFileContent');
+        const modalFileEditor = document.getElementById('modalFileEditor');
+        const editFileBtn = document.getElementById('editFileBtn');
+        const saveFileBtn = document.getElementById('saveFileBtn');
+        const cancelEditBtn = document.getElementById('cancelEditBtn');
+
+        // Show content display and hide editor
+        if (modalFileContent) modalFileContent.classList.remove('hidden');
+        if (modalFileEditor) modalFileEditor.classList.add('hidden');
+
+        // Show edit button, hide save and cancel
+        if (editFileBtn && this.currentFileCategory === 'CONFIDENTIAL') {
+            editFileBtn.classList.remove('hidden');
+            console.log('Restoring edit button visibility for confidential file');
+        }
+        if (saveFileBtn) saveFileBtn.classList.add('hidden');
+        if (cancelEditBtn) cancelEditBtn.classList.add('hidden');
+
+        // Restore original content if needed
+        if (restoreOriginal && modalFileEditor && modalFileContent) {
+            modalFileEditor.value = modalFileContent.textContent;
+        }
+    }
+
+    async saveFileContent() {
+        try {
+            const modalFileEditor = document.getElementById('modalFileEditor');
+            const content = modalFileEditor.value;
+
+            if (!this.currentFileId || !content) {
+                this.showError('No content to save');
+                return;
+            }
+
+            // For confidential files, require MFA
+            let mfaCode = null;
+            if (this.user?.mfa_enabled) {
+                mfaCode = await this.promptMFAForOperation('update this confidential file');
+                if (!mfaCode) {
+                    return; // User cancelled MFA prompt
+                }
+            }
+
+            const requestBody = {
+                action: 'write',
+                category: this.currentFileCategory.toUpperCase(),
+                fileId: this.currentFileId,
+                content: content
+            };
+
+            // Add MFA code if we have one
+            if (mfaCode) {
+                requestBody.mfaCode = mfaCode;
+            }
+
+            const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                // Update the content display
+                const modalFileContent = document.getElementById('modalFileContent');
+                modalFileContent.textContent = content;
+                
+                // Exit edit mode
+                this.exitEditMode(false);
+                
+                this.showSuccess('File updated successfully');
+            } else if (data.requireMfaVerification) {
+                // Handle anomaly detection requiring additional MFA
+                console.log('Anomaly detection triggered, requiring additional MFA verification');
+                
+                // Show anomaly information to user
+                let anomalyMessage = 'Additional security verification required due to:';
+                if (data.anomalies && data.anomalies.length > 0) {
+                    anomalyMessage += '\n' + data.anomalies.map(a => `• ${a.description}`).join('\n');
+                }
+                
+                // Prompt for additional MFA
+                const additionalMfaCode = await this.promptMFAForOperation(`save this file (${anomalyMessage})`);
+                if (additionalMfaCode) {
+                    // Retry the request with additional MFA
+                    requestBody.mfaCode = additionalMfaCode;
+                    
+                    const retryResponse = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${this.token}`
+                        },
+                        body: JSON.stringify(requestBody)
+                    });
+
+                    const retryData = await retryResponse.json();
+                    
+                    if (retryResponse.ok && retryData.success) {
+                        // Update the content display
+                        const modalFileContent = document.getElementById('modalFileContent');
+                        modalFileContent.textContent = content;
+                        
+                        // Exit edit mode
+                        this.exitEditMode(false);
+                        
+                        this.showSuccess('File updated successfully');
+                    } else {
+                        this.showError(retryData.message || 'Failed to save file after additional verification');
+                    }
+                } else {
+                    this.showError('Additional verification required but cancelled');
+                }
+            } else {
+                this.showError(data.message || 'Failed to save file');
+            }
+
+        } catch (error) {
+            console.error('Save file error:', error);
+            this.showError('Failed to save file');
+        }
+    }
+
     async loadProfile() {
         const content = document.getElementById('profile-content');
         
+        const mfaStatus = this.user.mfa_enabled ? 
+            '<span style="color: #28a745;">✓ Enabled</span>' : 
+            '<span style="color: #dc3545;">✗ Disabled</span>';
+        
         content.innerHTML = `
-            <div style="max-width: 500px;">
+            <div style="max-width: 600px;">
                 <div style="background: white; border-radius: 15px; padding: 2rem; margin-bottom: 2rem; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
                     <h3 style="margin-bottom: 1.5rem; color: #333;">Profile Information</h3>
                     
                     <div style="margin-bottom: 1rem;">
                         <label style="font-weight: 500; color: #333;">Full Name</label>
-                        <p style="color: #666; margin: 0.5rem 0;">${this.user.first_name} ${this.user.last_name}</p>
+                        <p style="color: #666; margin: 0.5rem 0;">${this.user.firstName} ${this.user.lastName}</p>
                     </div>
                     
                     <div style="margin-bottom: 1rem;">
@@ -845,29 +1147,212 @@ class SecureRUSApp {
                         <p style="color: #666; margin: 0.5rem 0;"><strong>${this.user.role}</strong></p>
                     </div>
                     
-                    <div style="margin-bottom: 1rem;">
-                        <label style="font-weight: 500; color: #333;">Account Status</label>
-                        <p style="color: #666; margin: 0.5rem 0;"><strong>${this.user.status}</strong></p>
-                    </div>
-                    
                     <div style="margin-bottom: 2rem;">
-                        <label style="font-weight: 500; color: #333;">Member Since</label>
-                        <p style="color: #666; margin: 0.5rem 0;">${new Date(this.user.created_at).toLocaleDateString()}</p>
+                        <label style="font-weight: 500; color: #333;">Account Status</label>
+                        <p style="color: #666; margin: 0.5rem 0;"><strong>${this.user.status || 'APPROVED'}</strong></p>
                     </div>
                     
                     <button class="btn" onclick="app.logout()">Logout</button>
                 </div>
                 
+                <div style="background: white; border-radius: 15px; padding: 2rem; margin-bottom: 2rem; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
+                    <h3 style="margin-bottom: 1.5rem; color: #333;">Security Settings</h3>
+                    
+                    <div style="margin-bottom: 2rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <div>
+                                <label style="font-weight: 500; color: #333;">Multi-Factor Authentication</label>
+                                <p style="color: #666; margin: 0.5rem 0; font-size: 0.9rem;">
+                                    Secure your account with an additional layer of protection
+                                </p>
+                                <p style="margin: 0.5rem 0;">Status: ${mfaStatus}</p>
+                            </div>
+                        </div>
+                        
+                        ${!this.user.mfa_enabled ? `
+                            <button class="btn" onclick="app.setupMFA()" style="background: #28a745;">
+                                Enable MFA
+                            </button>
+                        ` : `
+                            <div style="display: flex; gap: 1rem;">
+                                <button class="btn" onclick="app.disableMFA()" style="background: #dc3545;">
+                                    Disable MFA
+                                </button>
+                                
+                            </div>
+                        `}
+                    </div>
+                </div>
+                
                 <div style="background: #e3f2fd; border-radius: 15px; padding: 2rem; border-left: 4px solid #2196f3;">
-                    <h4 style="color: #1976d2; margin-bottom: 1rem;">Security Status</h4>
-                    <p style="color: #1565c0; margin-bottom: 1rem;">
-                        Multi-Factor Authentication: <strong>Enabled</strong><br>
-                        Password Security: <strong>Strong</strong><br>
-                        Account Verification: <strong>Verified</strong>
+                    <h4 style="color: #1976d2; margin-bottom: 1rem;">Security Information</h4>
+                    <p style="color: #1976d2; margin: 0; font-size: 0.9rem;">
+                        ${this.user.mfa_enabled ? 
+                            '🔒 Your account is secured with Multi-Factor Authentication. You will need your authenticator app to access confidential files.' :
+                            '⚠️ Consider enabling MFA for enhanced security, especially when working with confidential files.'
+                        }
                     </p>
                 </div>
             </div>
         `;
+    }
+
+    async setupMFA() {
+        try {
+            const response = await fetch(`${this.baseURL}/auth/setup-mfa`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.showMFASetupModal(data.qrCode, data.manualEntryKey);
+            } else {
+                this.showError(data.message || 'Failed to setup MFA');
+            }
+        } catch (error) {
+            console.error('MFA setup error:', error);
+            this.showError('MFA setup failed');
+        }
+    }
+
+    showMFASetupModal(qrCode, manualKey) {
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        `;
+
+        modal.innerHTML = `
+            <div style="background: white; padding: 2rem; border-radius: 15px; max-width: 500px; width: 90%; max-height: 90%; overflow-y: auto;">
+                <h3 style="text-align: center; margin-bottom: 1rem; color: #333;">Setup Multi-Factor Authentication</h3>
+                
+                <div style="text-align: center; margin-bottom: 1.5rem;">
+                    <p style="color: #666; margin-bottom: 1rem;">
+                        Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
+                    </p>
+                    <img src="${qrCode}" alt="MFA QR Code" style="max-width: 200px; border: 1px solid #ddd; border-radius: 10px;">
+                </div>
+                
+                <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 10px;">
+                    <p style="font-weight: 500; margin-bottom: 0.5rem; color: #333;">Manual Entry Key:</p>
+                    <code style="background: white; padding: 0.5rem; border-radius: 5px; display: block; word-break: break-all;">${manualKey}</code>
+                </div>
+                
+                <div style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 500;">
+                        Enter the 6-digit code from your authenticator app:
+                    </label>
+                    <input type="text" id="setupMfaCode" maxlength="6" 
+                           style="width: 100%; padding: 1rem; border: 2px solid #e9ecef; border-radius: 10px; font-size: 1.2rem; text-align: center; letter-spacing: 0.2rem;"
+                           placeholder="000000">
+                </div>
+                
+                <div style="display: flex; gap: 1rem;">
+                    <button id="mfaSetupCancelBtn" class="btn" style="flex: 1; background: #6c757d;">Cancel</button>
+                    <button id="mfaSetupConfirmBtn" class="btn" style="flex: 1;">Complete Setup</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        document.getElementById('setupMfaCode').focus();
+
+        // Handle confirmation
+        const confirmBtn = document.getElementById('mfaSetupConfirmBtn');
+        const cancelBtn = document.getElementById('mfaSetupCancelBtn');
+        const codeInput = document.getElementById('setupMfaCode');
+
+        const cleanup = () => {
+            document.body.removeChild(modal);
+        };
+
+        confirmBtn.onclick = async () => {
+            const code = codeInput.value;
+            if (code.length !== 6) {
+                this.showError('Please enter a 6-digit code');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${this.baseURL}/auth/confirm-mfa`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.token}`
+                    },
+                    body: JSON.stringify({ mfaCode: code })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    this.user.mfa_enabled = true;
+                    cleanup();
+                    this.showSuccess('MFA setup completed successfully!');
+                    this.loadProfile(); // Refresh profile to show new MFA status
+                } else {
+                    this.showError(data.message || 'Invalid MFA code');
+                    codeInput.value = '';
+                    codeInput.focus();
+                }
+            } catch (error) {
+                console.error('MFA confirmation error:', error);
+                this.showError('MFA setup failed');
+            }
+        };
+
+        cancelBtn.onclick = cleanup;
+
+        // Enter key to verify
+        codeInput.onkeypress = (e) => {
+            if (e.key === 'Enter') {
+                confirmBtn.click();
+            }
+        };
+    }
+
+    async disableMFA() {
+        if (!confirm('Are you sure you want to disable Multi-Factor Authentication? This will reduce your account security.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.baseURL}/auth/disable-mfa`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.user.mfa_enabled = false;
+                this.showSuccess('MFA has been disabled');
+                this.loadProfile(); // Refresh profile
+            } else {
+                this.showError(data.message || 'Failed to disable MFA');
+            }
+        } catch (error) {
+            console.error('MFA disable error:', error);
+            this.showError('Failed to disable MFA');
+        }
+    }
+
+    showBackupCodes() {
+        this.showError('Backup codes feature will be implemented in a future update');
     }
 
     async loadAdmin() {
@@ -876,36 +1361,530 @@ class SecureRUSApp {
             return;
         }
 
-        const content = document.getElementById('admin-content');
-        content.innerHTML = '<p style="text-align: center; color: #666;">Loading administration panel...</p>';
+        // Load dashboard by default
+        this.switchAdminTab('dashboard');
+        
+        // Setup admin event listeners if not already done
+        this.setupAdminEventListeners();
+    }
 
-        // This would load the admin interface - placeholder for now
-        content.innerHTML = `
-            <div style="margin-bottom: 2rem;">
-                <h3>System Administration</h3>
-                <p>Administrative functions will be implemented here.</p>
+    switchAdminTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+            btn.style.background = '#f8f9fa';
+            btn.style.color = '#495057';
+        });
+        
+        const activeTab = document.querySelector(`[data-tab="${tabName}"]`);
+        if (activeTab) {
+            activeTab.classList.add('active');
+            activeTab.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            activeTab.style.color = 'white';
+        }
+
+        // Hide all admin tab content
+        document.querySelectorAll('.admin-tab-content').forEach(content => {
+            content.classList.add('hidden');
+        });
+
+        // Show selected tab content
+        const selectedContent = document.getElementById(`admin-${tabName}`);
+        if (selectedContent) {
+            selectedContent.classList.remove('hidden');
+        }
+
+        // Load content based on tab
+        switch (tabName) {
+            case 'dashboard':
+                this.loadAdminDashboard();
+                break;
+            case 'users':
+                this.loadAllUsers();
+                break;
+            case 'pending':
+                this.loadPendingUsers();
+                break;
+            case 'audit':
+                this.loadAuditLogs();
+                break;
+        }
+    }
+
+    async loadAdminDashboard() {
+        try {
+            // Load system stats
+            const response = await fetch(`${this.baseURL}/admin/stats`, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Admin stats response:', data); // Debug log
                 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 2rem 0;">
-                    <div style="background: #e3f2fd; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                        <div style="font-size: 2rem; margin-bottom: 1rem;"></div>
-                        <h4>User Management</h4>
-                        <p>Manage user accounts</p>
-                    </div>
+                if (data.success && data.statistics) {
+                    // Calculate stats from the raw data
+                    const { users, files } = data.statistics;
                     
-                    <div style="background: #e8f5e8; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                        <div style="font-size: 2rem; margin-bottom: 1rem;"></div>
-                        <h4>Audit Logs</h4>
-                        <p>Review system activity</p>
-                    </div>
+                    // Calculate user counts
+                    let totalUsers = 0;
+                    let pendingUsers = 0;
                     
-                    <div style="background: #fff3e0; padding: 1.5rem; border-radius: 10px; text-align: center;">
-                        <div style="font-size: 2rem; margin-bottom: 1rem;"></div>
-                        <h4>System Settings</h4>
-                        <p>Configure system parameters</p>
-                    </div>
+                    if (users && Array.isArray(users)) {
+                        users.forEach(userGroup => {
+                            totalUsers += userGroup.count;
+                            if (userGroup.status === 'PENDING_APPROVAL') {
+                                pendingUsers += userGroup.count;
+                            }
+                        });
+                    }
+                    
+                    // Calculate file counts
+                    let totalFiles = 0;
+                    let encryptedFiles = 0;
+                    
+                    if (files && Array.isArray(files)) {
+                        files.forEach(fileGroup => {
+                            totalFiles += fileGroup.count;
+                            if (fileGroup.category === 'confidential') {
+                                encryptedFiles += fileGroup.count;
+                            }
+                        });
+                    }
+                    
+                    // Update dashboard stats
+                    document.getElementById('totalUsers').textContent = totalUsers;
+                    document.getElementById('pendingUsers').textContent = pendingUsers;
+                    document.getElementById('totalFiles').textContent = totalFiles;
+                    document.getElementById('encryptedFiles').textContent = encryptedFiles;
+
+                    // Load recent activity
+                    this.displayRecentActivity(data.statistics.recentActivity || []);
+                } else {
+                    console.error('Invalid stats response:', data);
+                    this.showError('Invalid statistics data received');
+                }
+            } else {
+                this.showError('Failed to load admin dashboard');
+            }
+        } catch (error) {
+            console.error('Admin dashboard error:', error);
+            this.showError('Failed to load admin dashboard');
+        }
+    }
+
+    displayRecentActivity(activities) {
+        const container = document.getElementById('recentActivity');
+        
+        if (!activities || activities.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #666;">No recent activity</p>';
+            return;
+        }
+
+        container.innerHTML = activities.map(activity => `
+            <div style="padding: 1rem; border-bottom: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong style="color: #333;">${this.escapeHtml(activity.action)}</strong>
+                    <p style="margin: 0; color: #666; font-size: 0.9rem;">
+                        ${activity.user && activity.user.email ? `by ${this.escapeHtml(activity.user.email)}` : 'System'} 
+                        ${activity.ipAddress ? `• ${this.escapeHtml(activity.ipAddress)}` : ''}
+                    </p>
+                </div>
+                <div style="text-align: right;">
+                    <span style="color: ${activity.success ? '#28a745' : '#dc3545'}; font-weight: bold;">
+                        ${activity.success ? '✓' : '✗'}
+                    </span>
+                    <p style="margin: 0; color: #666; font-size: 0.8rem;">
+                        ${this.formatDate(activity.timestamp)}
+                    </p>
                 </div>
             </div>
+        `).join('');
+    }
+
+    async loadAllUsers() {
+        try {
+            const response = await fetch(`${this.baseURL}/admin/users`, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.displayUsersTable(data.users || []);
+            } else {
+                this.showError('Failed to load users');
+            }
+        } catch (error) {
+            console.error('Load users error:', error);
+            this.showError('Failed to load users');
+        }
+    }
+
+    displayUsersTable(users) {
+        const container = document.getElementById('usersTable');
+        
+        if (users.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #666; padding: 2rem;">No users found</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8f9fa; border-bottom: 2px solid #e9ecef;">
+                            <th style="padding: 1rem; text-align: left; color: #333;">User</th>
+                            <th style="padding: 1rem; text-align: left; color: #333;">Email</th>
+                            <th style="padding: 1rem; text-align: left; color: #333;">Role</th>
+                            <th style="padding: 1rem; text-align: left; color: #333;">Status</th>
+                            <th style="padding: 1rem; text-align: left; color: #333;">Last Login</th>
+                            <th style="padding: 1rem; text-align: center; color: #333;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${users.map(user => `
+                            <tr style="border-bottom: 1px solid #e9ecef;">
+                                <td style="padding: 1rem;">
+                                    <strong>${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}</strong>
+                                </td>
+                                <td style="padding: 1rem; color: #666;">${this.escapeHtml(user.email)}</td>
+                                <td style="padding: 1rem;">
+                                    <span style="padding: 0.25rem 0.75rem; border-radius: 15px; font-size: 0.8rem; font-weight: bold; 
+                                                 background: ${this.getRoleColor(user.role).bg}; color: ${this.getRoleColor(user.role).text};">
+                                        ${user.role}
+                                    </span>
+                                </td>
+                                <td style="padding: 1rem;">
+                                    <span style="padding: 0.25rem 0.75rem; border-radius: 15px; font-size: 0.8rem; font-weight: bold;
+                                                 background: ${this.getStatusColor(user.status).bg}; color: ${this.getStatusColor(user.status).text};">
+                                        ${user.status}
+                                    </span>
+                                </td>
+                                <td style="padding: 1rem; color: #666;">
+                                    ${user.lastLogin ? this.formatDate(user.lastLogin) : 'Never'}
+                                </td>
+                                <td style="padding: 1rem; text-align: center;">
+                                    <button onclick="app.openRoleModal(${user.id}, '${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}', '${user.role}')" 
+                                            class="btn" style="background: #007bff; padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-right: 0.5rem;">
+                                        Change Role
+                                    </button>
+                                    ${user.status === 'APPROVED' ? 
+                                        `<button onclick="app.revokeUser(${user.id}, '${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}')" 
+                                                 class="btn" style="background: #dc3545; padding: 0.25rem 0.75rem; font-size: 0.8rem;">
+                                            Revoke
+                                         </button>` : ''}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
         `;
+    }
+
+    async loadPendingUsers() {
+        try {
+            const response = await fetch(`${this.baseURL}/admin/pending-users`, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.displayPendingUsersTable(data.users || []);
+            } else {
+                this.showError('Failed to load pending users');
+            }
+        } catch (error) {
+            console.error('Load pending users error:', error);
+            this.showError('Failed to load pending users');
+        }
+    }
+
+    displayPendingUsersTable(users) {
+        const container = document.getElementById('pendingUsersTable');
+        
+        if (users.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #666; padding: 2rem;">No pending approvals</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8f9fa; border-bottom: 2px solid #e9ecef;">
+                            <th style="padding: 1rem; text-align: left; color: #333;">User</th>
+                            <th style="padding: 1rem; text-align: left; color: #333;">Email</th>
+                            <th style="padding: 1rem; text-align: left; color: #333;">Requested Role</th>
+                            <th style="padding: 1rem; text-align: left; color: #333;">Registered</th>
+                            <th style="padding: 1rem; text-align: center; color: #333;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${users.map(user => `
+                            <tr style="border-bottom: 1px solid #e9ecef;">
+                                <td style="padding: 1rem;">
+                                    <strong>${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}</strong>
+                                </td>
+                                <td style="padding: 1rem; color: #666;">${this.escapeHtml(user.email)}</td>
+                                <td style="padding: 1rem;">
+                                    <span style="padding: 0.25rem 0.75rem; border-radius: 15px; font-size: 0.8rem; font-weight: bold; 
+                                                 background: ${this.getRoleColor(user.role).bg}; color: ${this.getRoleColor(user.role).text};">
+                                        ${user.role}
+                                    </span>
+                                </td>
+                                <td style="padding: 1rem; color: #666;">
+                                    ${this.formatDate(user.registeredAt)}
+                                </td>
+                                <td style="padding: 1rem; text-align: center;">
+                                    <button onclick="app.approveUser(${user.id}, '${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}')" 
+                                            class="btn" style="background: #28a745; padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-right: 0.5rem;">
+                                        Approve
+                                    </button>
+                                    <button onclick="app.rejectUser(${user.id}, '${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}')" 
+                                            class="btn" style="background: #dc3545; padding: 0.25rem 0.75rem; font-size: 0.8rem;">
+                                        Reject
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    async loadAuditLogs() {
+        try {
+            const filter = document.getElementById('auditFilter').value;
+            const url = filter ? 
+                `${this.baseURL}/admin/audit-logs?action=${encodeURIComponent(filter)}` : 
+                `${this.baseURL}/admin/audit-logs`;
+
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.displayAuditLogsTable(data.logs || []);
+            } else {
+                this.showError('Failed to load audit logs');
+            }
+        } catch (error) {
+            console.error('Load audit logs error:', error);
+            this.showError('Failed to load audit logs');
+        }
+    }
+
+    displayAuditLogsTable(logs) {
+        const container = document.getElementById('auditLogsTable');
+        
+        if (logs.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #666; padding: 2rem;">No audit logs found</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8f9fa; border-bottom: 2px solid #e9ecef;">
+                            <th style="padding: 1rem; text-align: left; color: #333;">Timestamp</th>
+                            <th style="padding: 1rem; text-align: left; color: #333;">User</th>
+                            <th style="padding: 1rem; text-align: left; color: #333;">Action</th>
+                            <th style="padding: 1rem; text-align: left; color: #333;">Resource</th>
+                            <th style="padding: 1rem; text-align: left; color: #333;">IP Address</th>
+                            <th style="padding: 1rem; text-align: center; color: #333;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${logs.map(log => `
+                            <tr style="border-bottom: 1px solid #e9ecef;">
+                                <td style="padding: 1rem; color: #666;">
+                                    ${this.formatDate(log.timestamp)}
+                                </td>
+                                <td style="padding: 1rem;">
+                                    ${log.user_email ? this.escapeHtml(log.user_email) : 'System'}
+                                </td>
+                                <td style="padding: 1rem;">
+                                    <strong>${this.escapeHtml(log.action)}</strong>
+                                </td>
+                                <td style="padding: 1rem; color: #666;">
+                                    ${log.resource ? this.escapeHtml(log.resource) : '-'}
+                                </td>
+                                <td style="padding: 1rem; color: #666; font-family: monospace;">
+                                    ${log.ip_address || '-'}
+                                </td>
+                                <td style="padding: 1rem; text-align: center;">
+                                    <span style="color: ${log.success ? '#28a745' : '#dc3545'}; font-weight: bold; font-size: 1.2rem;">
+                                        ${log.success ? '✓' : '✗'}
+                                    </span>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    getRoleColor(role) {
+        const colors = {
+            'ADMIN': { bg: '#dc3545', text: 'white' },
+            'MANAGER': { bg: '#fd7e14', text: 'white' },
+            'USER': { bg: '#007bff', text: 'white' },
+            'GUEST': { bg: '#6c757d', text: 'white' }
+        };
+        return colors[role] || { bg: '#6c757d', text: 'white' };
+    }
+
+    getStatusColor(status) {
+        const colors = {
+            'APPROVED': { bg: '#28a745', text: 'white' },
+            'PENDING_APPROVAL': { bg: '#ffc107', text: 'black' },
+            'REVOKED': { bg: '#dc3545', text: 'white' },
+            'SUSPENDED': { bg: '#fd7e14', text: 'white' }
+        };
+        return colors[status] || { bg: '#6c757d', text: 'white' };
+    }
+
+    // User management actions
+    async approveUser(userId, userName) {
+        if (!confirm(`Approve user "${userName}"?`)) return;
+
+        try {
+            const response = await fetch(`${this.baseURL}/admin/approve-user`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify({ userId })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                this.showSuccess(`User "${userName}" approved successfully`);
+                this.loadPendingUsers(); // Refresh the table
+                this.loadAdminDashboard(); // Update stats
+            } else {
+                this.showError(data.message || 'Failed to approve user');
+            }
+        } catch (error) {
+            console.error('Approve user error:', error);
+            this.showError('Failed to approve user');
+        }
+    }
+
+    async rejectUser(userId, userName) {
+        if (!confirm(`Reject user "${userName}"? This will delete their account.`)) return;
+
+        try {
+            const response = await fetch(`${this.baseURL}/admin/revoke-user`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify({ userId })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                this.showSuccess(`User "${userName}" rejected and removed`);
+                this.loadPendingUsers(); // Refresh the table
+                this.loadAdminDashboard(); // Update stats
+            } else {
+                this.showError(data.message || 'Failed to reject user');
+            }
+        } catch (error) {
+            console.error('Reject user error:', error);
+            this.showError('Failed to reject user');
+        }
+    }
+
+    async revokeUser(userId, userName) {
+        if (!confirm(`Revoke access for user "${userName}"?`)) return;
+
+        try {
+            const response = await fetch(`${this.baseURL}/admin/revoke-user`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify({ userId })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                this.showSuccess(`User "${userName}" access revoked`);
+                this.loadAllUsers(); // Refresh the table
+                this.loadAdminDashboard(); // Update stats
+            } else {
+                this.showError(data.message || 'Failed to revoke user');
+            }
+        } catch (error) {
+            console.error('Revoke user error:', error);
+            this.showError('Failed to revoke user');
+        }
+    }
+
+    // Role management
+    openRoleModal(userId, userName, currentRole) {
+        this.selectedUserId = userId;
+        this.selectedUserName = userName;
+        
+        document.getElementById('roleModalUser').textContent = `Assign role for: ${userName}`;
+        document.getElementById('roleSelect').value = currentRole;
+        document.getElementById('roleModal').classList.remove('hidden');
+    }
+
+    closeRoleModal() {
+        document.getElementById('roleModal').classList.add('hidden');
+        this.selectedUserId = null;
+        this.selectedUserName = null;
+    }
+
+    async assignRole() {
+        const newRole = document.getElementById('roleSelect').value;
+        
+        if (!this.selectedUserId || !newRole) return;
+
+        try {
+            const response = await fetch(`${this.baseURL}/admin/assign-role`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify({ 
+                    userId: this.selectedUserId, 
+                    role: newRole 
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                this.showSuccess(`Role assigned successfully to ${this.selectedUserName}`);
+                this.closeRoleModal();
+                this.loadAllUsers(); // Refresh the table
+            } else {
+                this.showError(data.message || 'Failed to assign role');
+            }
+        } catch (error) {
+            console.error('Assign role error:', error);
+            this.showError('Failed to assign role');
+        }
     }
 
     async loadAnalytics() {
@@ -917,34 +1896,320 @@ class SecureRUSApp {
         const content = document.getElementById('analytics-content');
         content.innerHTML = '<p style="text-align: center; color: #666;">Loading analytics dashboard...</p>';
 
-        // This would load the analytics interface - placeholder for now
+        try {
+            // Load endpoint logs and analytics data
+            const [logsResponse, dashboardResponse] = await Promise.all([
+                fetch(`${this.baseURL}/analytics/endpoint-logs?timeRange=24h`, {
+                    headers: { 'Authorization': `Bearer ${this.token}` }
+                }),
+                fetch(`${this.baseURL}/analytics/dashboard`, {
+                    headers: { 'Authorization': `Bearer ${this.token}` }
+                })
+            ]);
+
+            if (!logsResponse.ok || !dashboardResponse.ok) {
+                throw new Error('Failed to load analytics data');
+            }
+
+            const logsData = await logsResponse.json();
+            const dashboardData = await dashboardResponse.json();
+
+            this.renderAnalyticsDashboard(logsData, dashboardData);
+            
+            // Set up auto-refresh every 30 seconds
+            if (this.analyticsRefreshInterval) {
+                clearInterval(this.analyticsRefreshInterval);
+            }
+            this.analyticsRefreshInterval = setInterval(() => {
+                if (document.getElementById('analytics-section').classList.contains('hidden') === false) {
+                    this.loadAnalytics();
+                }
+            }, 30000);
+
+        } catch (error) {
+            console.error('Analytics loading error:', error);
+            content.innerHTML = `
+                <div style="text-align: center; color: #dc3545; margin: 2rem 0;">
+                    <p>Failed to load analytics data</p>
+                    <button onclick="app.loadAnalytics()" class="btn" style="margin-top: 1rem;">Retry</button>
+                </div>
+            `;
+        }
+    }
+
+    renderAnalyticsDashboard(logsData, dashboardData) {
+        const content = document.getElementById('analytics-content');
+        
         content.innerHTML = `
-            <div style="margin-bottom: 2rem;">
-                <h3>Security Analytics</h3>
-                <p>Real-time monitoring and analytics dashboard.</p>
-                
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 2rem 0;">
-                    <div style="background: #e3f2fd; padding: 1.5rem; border-radius: 10px;">
-                        <h4 style="color: #1976d2;">Anomaly Detection</h4>
-                        <p style="color: #1565c0;">Real-time threat monitoring</p>
+            <div class="analytics-dashboard">
+                <!-- Dashboard Header with Stats -->
+                <div class="analytics-header" style="margin-bottom: 2rem;">
+                    <h3 style="margin-bottom: 1rem;">Real-Time Security Analytics</h3>
+                    <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                        <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 10px; text-align: center;">
+                            <h4 style="margin: 0; font-size: 2rem;">${logsData.totalLogs || 0}</h4>
+                            <p style="margin: 0.5rem 0 0 0;">Total Logs (24h)</p>
+                        </div>
+                        <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 1.5rem; border-radius: 10px; text-align: center;">
+                            <h4 style="margin: 0; font-size: 2rem;">${logsData.summary?.successful || 0}</h4>
+                            <p style="margin: 0.5rem 0 0 0;">Successful Operations</p>
+                        </div>
+                        <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 1.5rem; border-radius: 10px; text-align: center;">
+                            <h4 style="margin: 0; font-size: 2rem;">${logsData.summary?.uniqueUsers || 0}</h4>
+                            <p style="margin: 0.5rem 0 0 0;">Active Users</p>
+                        </div>
+                        <div class="stat-card" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 1.5rem; border-radius: 10px; text-align: center;">
+                            <h4 style="margin: 0; font-size: 2rem;">${logsData.summary?.failed || 0}</h4>
+                            <p style="margin: 0.5rem 0 0 0;">Failed Attempts</p>
+                        </div>
                     </div>
-                    
-                    <div style="background: #e8f5e8; padding: 1.5rem; border-radius: 10px;">
-                        <h4 style="color: #388e3c;">Activity Metrics</h4>
-                        <p style="color: #2e7d32;">User activity analysis</p>
+                </div>
+
+                <!-- Controls -->
+                <div class="analytics-controls" style="background: #f8f9fa; padding: 1rem; border-radius: 10px; margin-bottom: 2rem;">
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                        <label style="font-weight: bold;">Time Range:</label>
+                        <select id="analyticsTimeRange" onchange="app.updateAnalyticsTimeRange(this.value)" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 5px;">
+                            <option value="1h">Last Hour</option>
+                            <option value="24h" selected>Last 24 Hours</option>
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d">Last 30 Days</option>
+                        </select>
+                        
+                        <label style="font-weight: bold; margin-left: 1rem;">Filter by Endpoint:</label>
+                        <select id="analyticsEndpointFilter" onchange="app.updateAnalyticsEndpointFilter(this.value)" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 5px;">
+                            <option value="">All Endpoints</option>
+                            <option value="auth">Authentication</option>
+                            <option value="files">File Operations</option>
+                            <option value="admin">Admin Operations</option>
+                            <option value="analytics">Analytics</option>
+                        </select>
+                        
+                        <button onclick="app.loadAnalytics()" class="btn" style="background: #28a745; margin-left: auto;">
+                            🔄 Refresh
+                        </button>
                     </div>
-                    
-                    <div style="background: #fff3e0; padding: 1.5rem; border-radius: 10px;">
-                        <h4 style="color: #f57c00;">Security Events</h4>
-                        <p style="color: #ef6c00;">Security incident tracking</p>
+                </div>
+
+                <!-- Real-time Activity Monitor -->
+                <div class="activity-monitor" style="background: white; border: 1px solid #ddd; border-radius: 10px; margin-bottom: 2rem; overflow: hidden;">
+                    <div style="background: #343a40; color: white; padding: 1rem; font-weight: bold;">
+                        📊 Real-Time Activity Log Monitor
+                        <span style="float: right; font-size: 0.9rem; opacity: 0.8;">Auto-refreshes every 30s</span>
+                    </div>
+                    <div id="activityLogContainer" style="max-height: 400px; overflow-y: auto;">
+                        ${this.renderActivityLogs(logsData.logs || [])}
+                    </div>
+                </div>
+
+                <!-- Endpoint Usage Visualization -->
+                <div class="endpoint-visualization" style="background: white; border: 1px solid #ddd; border-radius: 10px; margin-bottom: 2rem;">
+                    <div style="background: #495057; color: white; padding: 1rem; font-weight: bold;">
+                        📈 Endpoint Usage Analytics
+                    </div>
+                    <div style="padding: 1rem;">
+                        ${this.renderEndpointUsageChart(logsData.logs || [])}
+                    </div>
+                </div>
+
+                <!-- Security Events & Anomalies -->
+                <div class="security-events" style="background: white; border: 1px solid #ddd; border-radius: 10px;">
+                    <div style="background: #dc3545; color: white; padding: 1rem; font-weight: bold;">
+                        🔒 Security Events & Anomalies
+                    </div>
+                    <div style="padding: 1rem;">
+                        ${this.renderSecurityEvents(logsData.logs || [])}
                     </div>
                 </div>
             </div>
         `;
     }
 
+    renderActivityLogs(logs) {
+        if (!logs || logs.length === 0) {
+            return '<div style="padding: 2rem; text-align: center; color: #666;">No activity logs found</div>';
+        }
+
+        return logs.slice(0, 50).map(log => {
+            const timestamp = new Date(log.timestamp).toLocaleString();
+            const statusColor = log.success ? '#28a745' : '#dc3545';
+            const statusIcon = log.success ? '✅' : '❌';
+            const riskLevel = this.getRiskLevel(log.riskScore || 0);
+            
+            return `
+                <div class="log-entry" style="border-bottom: 1px solid #eee; padding: 0.75rem; display: flex; align-items: center; hover: background-color: #f8f9fa;">
+                    <span style="color: ${statusColor}; margin-right: 0.5rem; font-size: 1.1rem;">${statusIcon}</span>
+                    <div style="flex: 1;">
+                        <div style="font-weight: bold; color: #333;">
+                            ${this.escapeHtml(log.action)}
+                            ${log.resource ? ` - ${this.escapeHtml(log.resource)}` : ''}
+                        </div>
+                        <div style="font-size: 0.9rem; color: #666; margin-top: 0.25rem;">
+                            ${log.user ? `${log.user.name} (${log.user.email})` : 'System'} • 
+                            ${timestamp} • 
+                            IP: ${log.ipAddress || 'Unknown'} • 
+                            Risk: <span style="color: ${riskLevel.color}; font-weight: bold;">${riskLevel.label}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    renderEndpointUsageChart(logs) {
+        const endpointCounts = {};
+        logs.forEach(log => {
+            const endpoint = this.extractEndpoint(log.action);
+            endpointCounts[endpoint] = (endpointCounts[endpoint] || 0) + 1;
+        });
+
+        const sortedEndpoints = Object.entries(endpointCounts)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 10);
+
+        if (sortedEndpoints.length === 0) {
+            return '<div style="padding: 2rem; text-align: center; color: #666;">No endpoint data available</div>';
+        }
+
+        const maxCount = Math.max(...sortedEndpoints.map(([,count]) => count));
+
+        return `
+            <div class="endpoint-chart">
+                ${sortedEndpoints.map(([endpoint, count]) => {
+                    const percentage = (count / maxCount) * 100;
+                    return `
+                        <div style="margin-bottom: 1rem;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                                <span style="font-weight: bold;">${this.escapeHtml(endpoint)}</span>
+                                <span style="color: #666;">${count} requests</span>
+                            </div>
+                            <div style="background: #e9ecef; border-radius: 10px; height: 20px; overflow: hidden;">
+                                <div style="background: linear-gradient(90deg, #007bff, #0056b3); height: 100%; width: ${percentage}%; border-radius: 10px; transition: width 0.3s ease;"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    renderSecurityEvents(logs) {
+        const securityEvents = logs.filter(log => 
+            !log.success || 
+            (log.riskScore && log.riskScore > 3) || 
+            log.action.includes('FAILED') || 
+            log.action.includes('ANOMALY')
+        );
+
+        if (securityEvents.length === 0) {
+            return '<div style="padding: 2rem; text-align: center; color: #28a745;">✅ No security events detected in the selected time range</div>';
+        }
+
+        return `
+            <div class="security-events-list">
+                ${securityEvents.slice(0, 20).map(event => {
+                    const riskLevel = this.getRiskLevel(event.riskScore || 0);
+                    const timestamp = new Date(event.timestamp).toLocaleString();
+                    
+                    return `
+                        <div class="security-event" style="border-left: 4px solid ${riskLevel.color}; background: ${riskLevel.bgColor}; padding: 1rem; margin-bottom: 1rem; border-radius: 0 10px 10px 0;">
+                            <div style="font-weight: bold; color: ${riskLevel.color}; margin-bottom: 0.5rem;">
+                                ${riskLevel.icon} ${riskLevel.label} Security Event
+                            </div>
+                            <div style="color: #333; margin-bottom: 0.5rem;">
+                                <strong>Action:</strong> ${this.escapeHtml(event.action)}
+                                ${event.resource ? ` • <strong>Resource:</strong> ${this.escapeHtml(event.resource)}` : ''}
+                            </div>
+                            <div style="font-size: 0.9rem; color: #666;">
+                                <strong>User:</strong> ${event.user ? `${event.user.name} (${event.user.email})` : 'System'} • 
+                                <strong>Time:</strong> ${timestamp} • 
+                                <strong>IP:</strong> ${event.ipAddress || 'Unknown'}
+                                ${event.riskScore ? ` • <strong>Risk Score:</strong> ${event.riskScore}` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    extractEndpoint(action) {
+        if (action.includes('auth') || action.includes('AUTH') || action.includes('LOGIN') || action.includes('MFA')) return 'Authentication';
+        if (action.includes('file') || action.includes('FILE')) return 'File Operations';
+        if (action.includes('admin') || action.includes('ADMIN')) return 'Admin Operations';
+        if (action.includes('analytics') || action.includes('ANALYTICS')) return 'Analytics';
+        if (action.includes('profile') || action.includes('PROFILE')) return 'Profile';
+        return action.split('_')[0] || 'Other';
+    }
+
+    getRiskLevel(riskScore) {
+        if (riskScore >= 8) return { label: 'CRITICAL', color: '#dc3545', bgColor: '#f8d7da', icon: '🚨' };
+        if (riskScore >= 6) return { label: 'HIGH', color: '#fd7e14', bgColor: '#ffeaa7', icon: '⚠️' };
+        if (riskScore >= 4) return { label: 'MEDIUM', color: '#ffc107', bgColor: '#fff3cd', icon: '⚡' };
+        if (riskScore >= 2) return { label: 'LOW', color: '#17a2b8', bgColor: '#d1ecf1', icon: 'ℹ️' };
+        return { label: 'MINIMAL', color: '#28a745', bgColor: '#d4edda', icon: '✅' };
+    }
+
+    async updateAnalyticsTimeRange(timeRange) {
+        const content = document.getElementById('analytics-content');
+        const originalContent = content.innerHTML;
+        
+        try {
+            content.innerHTML = '<p style="text-align: center; color: #666; margin: 2rem 0;">Updating time range...</p>';
+            
+            const logsResponse = await fetch(`${this.baseURL}/analytics/endpoint-logs?timeRange=${timeRange}`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            
+            if (!logsResponse.ok) throw new Error('Failed to load updated data');
+            
+            const logsData = await logsResponse.json();
+            const dashboardResponse = await fetch(`${this.baseURL}/analytics/dashboard`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            const dashboardData = await dashboardResponse.json();
+            
+            this.renderAnalyticsDashboard(logsData, dashboardData);
+        } catch (error) {
+            console.error('Time range update error:', error);
+            content.innerHTML = originalContent;
+            this.showError('Failed to update time range');
+        }
+    }
+
+    async updateAnalyticsEndpointFilter(endpoint) {
+        const timeRange = document.getElementById('analyticsTimeRange').value;
+        const content = document.getElementById('analytics-content');
+        const originalContent = content.innerHTML;
+        
+        try {
+            content.innerHTML = '<p style="text-align: center; color: #666; margin: 2rem 0;">Applying filter...</p>';
+            
+            const params = new URLSearchParams({ timeRange });
+            if (endpoint) params.append('endpoint', endpoint);
+            
+            const logsResponse = await fetch(`${this.baseURL}/analytics/endpoint-logs?${params}`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            
+            if (!logsResponse.ok) throw new Error('Failed to load filtered data');
+            
+            const logsData = await logsResponse.json();
+            const dashboardResponse = await fetch(`${this.baseURL}/analytics/dashboard`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            const dashboardData = await dashboardResponse.json();
+            
+            this.renderAnalyticsDashboard(logsData, dashboardData);
+        } catch (error) {
+            console.error('Filter update error:', error);
+            content.innerHTML = originalContent;
+            this.showError('Failed to apply filter');
+        }
+    }
+
     async logout() {
-        console.log('👋 Logging out...');
+        console.log(' Logging out...');
         
         try {
             await fetch(`${this.baseURL}/auth/logout`, {
@@ -1017,6 +2282,114 @@ class SecureRUSApp {
                 notification.remove();
             }
         }, 5000);
+    }
+
+    // MFA Helper Methods
+    showMFASection() {
+        document.getElementById('mfa-section').classList.remove('hidden');
+        document.getElementById('mfaToken').focus();
+    }
+
+    hideMFASection() {
+        document.getElementById('mfa-section').classList.add('hidden');
+        document.getElementById('mfaToken').value = '';
+    }
+
+    async promptMFAForOperation(operationName) {
+        return new Promise((resolve) => {
+            // Create MFA modal
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.5);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+            `;
+
+            modal.innerHTML = `
+                <div style="background: white; padding: 2rem; border-radius: 15px; max-width: 400px; width: 90%;">
+                    <h3 style="text-align: center; margin-bottom: 1rem; color: #333;">Multi-Factor Authentication Required</h3>
+                    <p style="text-align: center; color: #666; margin-bottom: 1.5rem;">
+                        Please enter your 6-digit authenticator code to ${operationName.toLowerCase()}
+                    </p>
+                    
+                    <input type="text" id="operationMfaCode" maxlength="6" 
+                           style="width: 100%; padding: 1rem; border: 2px solid #e9ecef; border-radius: 10px; font-size: 1.2rem; text-align: center; letter-spacing: 0.2rem; margin-bottom: 1.5rem;"
+                           placeholder="000000">
+                    
+                    <div style="display: flex; gap: 1rem;">
+                        <button id="mfaCancelBtn" class="btn" style="flex: 1; background: #6c757d;">Cancel</button>
+                        <button id="mfaVerifyBtn" class="btn" style="flex: 1;">Verify & Continue</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            document.getElementById('operationMfaCode').focus();
+
+            // Handle verification
+            const verifyBtn = document.getElementById('mfaVerifyBtn');
+            const cancelBtn = document.getElementById('mfaCancelBtn');
+            const codeInput = document.getElementById('operationMfaCode');
+
+            const cleanup = () => {
+                document.body.removeChild(modal);
+            };
+
+            verifyBtn.onclick = async () => {
+                const code = codeInput.value;
+                if (code.length !== 6) {
+                    this.showError('Please enter a 6-digit code');
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`${this.baseURL}/auth/verify-mfa-operation`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${this.token}`
+                        },
+                        body: JSON.stringify({
+                            mfaCode: code,
+                            operation: operationName
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        cleanup();
+                        resolve(data.tempToken || code); // Return temp token if available, otherwise the code
+                    } else {
+                        this.showError(data.message || 'Invalid MFA code');
+                        codeInput.value = '';
+                        codeInput.focus();
+                    }
+                } catch (error) {
+                    console.error('MFA verification error:', error);
+                    this.showError('MFA verification failed');
+                }
+            };
+
+            cancelBtn.onclick = () => {
+                cleanup();
+                resolve(null); // Return null instead of false for cancellation
+            };
+
+            // Enter key to verify
+            codeInput.onkeypress = (e) => {
+                if (e.key === 'Enter') {
+                    verifyBtn.click();
+                }
+            };
+        });
     }
 }
 

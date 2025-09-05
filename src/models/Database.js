@@ -101,6 +101,15 @@ class Database {
                 can_read BOOLEAN DEFAULT 0,
                 can_write BOOLEAN DEFAULT 0,
                 can_delete BOOLEAN DEFAULT 0
+            )`,
+
+            // Temporary MFA secrets table
+            `CREATE TABLE IF NOT EXISTS temp_mfa_secrets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                secret TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
             )`
         ];
 
@@ -384,6 +393,87 @@ class Database {
                     reject(err);
                 } else {
                     resolve(this.changes);
+                }
+            });
+        });
+    }
+
+    // MFA related methods
+    storeTempMFASecret(userId, secret) {
+        return new Promise((resolve, reject) => {
+            const stmt = this.db.prepare(`
+                INSERT OR REPLACE INTO temp_mfa_secrets (user_id, secret, created_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+            `);
+            
+            stmt.run([userId, secret], function(err) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(this.lastID);
+                }
+            });
+            
+            stmt.finalize();
+        });
+    }
+
+    getTempMFASecret(userId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(`
+                SELECT secret FROM temp_mfa_secrets 
+                WHERE user_id = ? AND created_at > datetime('now', '-10 minutes')
+            `, [userId], (err, row) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(row ? row.secret : null);
+                }
+            });
+        });
+    }
+
+    clearTempMFASecret(userId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(`
+                DELETE FROM temp_mfa_secrets WHERE user_id = ?
+            `, [userId], (err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(true);
+                }
+            });
+        });
+    }
+
+    enableMFA(userId, secret) {
+        return new Promise((resolve, reject) => {
+            this.db.run(`
+                UPDATE users 
+                SET mfa_enabled = 1, mfa_secret = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `, [secret, userId], (err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(true);
+                }
+            });
+        });
+    }
+
+    disableMFA(userId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(`
+                UPDATE users 
+                SET mfa_enabled = 0, mfa_secret = NULL, backup_codes = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `, [userId], (err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(true);
                 }
             });
         });

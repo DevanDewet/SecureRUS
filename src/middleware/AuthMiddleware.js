@@ -150,8 +150,32 @@ class AuthMiddleware {
                     mfaTimestamp && 
                     (Date.now() - mfaTimestamp) < mfaValidityWindow;
 
+                // Check if MFA code is provided in request body
+                const mfaCode = req.body?.mfaCode;
+                let mfaCodeValid = false;
+
+                if (mfaCode && req.user.mfaSecret) {
+                    // Verify the provided MFA code
+                    const speakeasy = require('speakeasy');
+                    mfaCodeValid = speakeasy.totp.verify({
+                        secret: req.user.mfaSecret,
+                        encoding: 'base32',
+                        token: mfaCode,
+                        window: 2
+                    });
+
+                    if (mfaCodeValid) {
+                        console.log(`MFA code verification successful for user: ${req.user.email}`);
+                        // Update session to mark MFA as verified
+                        req.session.mfaVerified = true;
+                        req.session.mfaTimestamp = Date.now();
+                    } else {
+                        console.log(`MFA code verification failed for user: ${req.user.email}`);
+                    }
+                }
+
                 // Require MFA verification if not verified or high risk
-                if (!isMfaValid || anomalyResult.totalRiskScore >= 7) {
+                if ((!isMfaValid && !mfaCodeValid) || (anomalyResult.totalRiskScore >= 7 && !mfaCodeValid)) {
                     return res.status(403).json({
                         success: false,
                         message: 'MFA verification required',

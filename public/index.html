@@ -405,9 +405,7 @@
                                 Verify & Continue
                             </button>
 
-                            <p style="text-align: center; margin-top: 1rem; font-size: 0.9rem; color: #666;">
-                                Having trouble? Use one of your backup codes instead.
-                            </p>
+                          
                         </div>
 
                         <p style="text-align: center; margin-top: 2rem; color: #666;">
@@ -499,13 +497,13 @@
                         <!-- File Management Tabs -->
                         <div class="file-tabs" style="display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 2px solid #e9ecef;">
                             <button class="tab-btn active" data-category="DOCUMENTS" style="padding: 1rem 2rem; border: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px 10px 0 0; cursor: pointer;">
-                                📄 Documents
+                                Documents
                             </button>
                             <button class="tab-btn" data-category="IMAGES" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer;">
-                                🖼️ Images
+                                Images
                             </button>
                             <button class="tab-btn" data-category="CONFIDENTIAL" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer;">
-                                🔒 Confidential
+                                Confidential
                             </button>
                         </div>
 
@@ -542,7 +540,7 @@
                             <div class="files-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                                 <h3 id="filesTitle" style="color: #333;">Documents</h3>
                                 <button id="refreshFilesBtn" class="btn" style="background: #17a2b8; padding: 0.5rem 1rem;">
-                                    🔄 Refresh
+                                    Refresh
                                 </button>
                             </div>
                             <div id="filesList" class="files-grid" style="display: grid; gap: 1rem;">
@@ -559,7 +557,11 @@
                                 </div>
                                 <div id="modalFileContent" style="white-space: pre-wrap; font-family: monospace; background: #f8f9fa; padding: 1rem; border-radius: 10px; max-height: 400px; overflow: auto;">
                                 </div>
+                                <textarea id="modalFileEditor" class="hidden" style="width: 100%; height: 400px; font-family: monospace; background: #f8f9fa; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; resize: vertical;"></textarea>
                                 <div class="modal-actions" style="margin-top: 1rem; display: flex; gap: 1rem;">
+                                    <button id="editFileBtn" class="btn" style="background: #28a745;">Edit</button>
+                                    <button id="saveFileBtn" class="btn hidden" style="background: #007bff;">Save</button>
+                                    <button id="cancelEditBtn" class="btn hidden" style="background: #6c757d;">Cancel</button>
                                     <button id="downloadFileBtn" class="btn">Download</button>
                                     <button id="deleteFileBtn" class="btn" style="background: #dc3545;">Delete</button>
                                 </div>
@@ -572,7 +574,129 @@
                 <div id="admin-section" class="section hidden">
                     <h2 style="color: #333; margin-bottom: 2rem;">System Administration</h2>
                     <div id="admin-content">
-                        <p style="text-align: center; color: #666; margin: 3rem 0;">Administrator access required</p>
+                        <!-- Admin Dashboard Tabs -->
+                        <div class="admin-tabs" style="display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 2px solid #e9ecef; flex-wrap: wrap;">
+                            <button class="admin-tab-btn active" data-tab="dashboard" style="padding: 1rem 2rem; border: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                                Dashboard
+                            </button>
+                            <button class="admin-tab-btn" data-tab="users" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                                All Users
+                            </button>
+                            <button class="admin-tab-btn" data-tab="pending" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                                Pending Approvals
+                            </button>
+                            <button class="admin-tab-btn" data-tab="audit" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                                Audit Logs
+                            </button>
+                        </div>
+
+                        <!-- Dashboard Tab -->
+                        <div id="admin-dashboard" class="admin-tab-content">
+                            <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; margin-bottom: 2rem;">
+                                <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                                    <div style="font-size: 3rem; margin-bottom: 1rem;">👥</div>
+                                    <h3 id="totalUsers" style="font-size: 2.5rem; margin: 0;">-</h3>
+                                    <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Total Users</p>
+                                </div>
+                                <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                                    <div style="font-size: 3rem; margin-bottom: 1rem;">⏳</div>
+                                    <h3 id="pendingUsers" style="font-size: 2.5rem; margin: 0;">-</h3>
+                                    <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Pending Approval</p>
+                                </div>
+                                <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                                    <div style="font-size: 3rem; margin-bottom: 1rem;">📁</div>
+                                    <h3 id="totalFiles" style="font-size: 2.5rem; margin: 0;">-</h3>
+                                    <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Total Files</p>
+                                </div>
+                                <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                                    <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
+                                    <h3 id="encryptedFiles" style="font-size: 2.5rem; margin: 0;">-</h3>
+                                    <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Encrypted Files</p>
+                                </div>
+                            </div>
+
+                            <div class="recent-activity" style="background: white; border-radius: 15px; padding: 2rem; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                                <h3 style="color: #333; margin-bottom: 1.5rem;">Recent System Activity</h3>
+                                <div id="recentActivity" style="max-height: 300px; overflow-y: auto;">
+                                    <p style="text-align: center; color: #666;">Loading recent activity...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- All Users Tab -->
+                        <div id="admin-users" class="admin-tab-content hidden">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                                <h3 style="color: #333;">All Users</h3>
+                                <button id="refreshUsersBtn" class="btn" style="background: #17a2b8; padding: 0.5rem 1rem;">
+                                    Refresh
+                                </button>
+                            </div>
+                            <div id="usersTable" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                                <p style="text-align: center; color: #666; padding: 2rem;">Loading users...</p>
+                            </div>
+                        </div>
+
+                        <!-- Pending Users Tab -->
+                        <div id="admin-pending" class="admin-tab-content hidden">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                                <h3 style="color: #333;">Pending User Approvals</h3>
+                                <button id="refreshPendingBtn" class="btn" style="background: #17a2b8; padding: 0.5rem 1rem;">
+                                    Refresh
+                                </button>
+                            </div>
+                            <div id="pendingUsersTable" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                                <p style="text-align: center; color: #666; padding: 2rem;">Loading pending users...</p>
+                            </div>
+                        </div>
+
+                        <!-- Audit Logs Tab -->
+                        <div id="admin-audit" class="admin-tab-content hidden">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                                <h3 style="color: #333;">Audit Logs</h3>
+                                <div style="display: flex; gap: 1rem; align-items: center;">
+                                    <select id="auditFilter" style="padding: 0.5rem; border: 2px solid #e9ecef; border-radius: 5px;">
+                                        <option value="">All Actions</option>
+                                        <option value="LOGIN">Login</option>
+                                        <option value="LOGOUT">Logout</option>
+                                        <option value="FILE_UPLOAD">File Upload</option>
+                                        <option value="FILE_DOWNLOAD">File Download</option>
+                                        <option value="ADMIN">Admin Actions</option>
+                                    </select>
+                                    <button id="refreshAuditBtn" class="btn" style="background: #17a2b8; padding: 0.5rem 1rem;">
+                                        Refresh
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="auditLogsTable" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                                <p style="text-align: center; color: #666; padding: 2rem;">Loading audit logs...</p>
+                            </div>
+                        </div>
+
+                        <!-- Role Assignment Modal -->
+                        <div id="roleModal" class="modal hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+                            <div class="modal-content" style="background: white; border-radius: 15px; padding: 2rem; max-width: 500px; width: 90%;">
+                                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #e9ecef; padding-bottom: 1rem;">
+                                    <h3 id="roleModalTitle" style="color: #333; margin: 0;">Assign Role</h3>
+                                    <button id="closeRoleModalBtn" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">✖️</button>
+                                </div>
+                                <div id="roleModalContent">
+                                    <p id="roleModalUser" style="margin-bottom: 1rem; color: #666;"></p>
+                                    <div style="margin-bottom: 1rem;">
+                                        <label style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 500;">Select Role:</label>
+                                        <select id="roleSelect" style="width: 100%; padding: 0.8rem; border: 2px solid #e9ecef; border-radius: 5px;">
+                                            <option value="USER">User</option>
+                                            <option value="MANAGER">Manager</option>
+                                            <option value="ADMIN">Admin</option>
+                                            <option value="GUEST">Guest</option>
+                                        </select>
+                                    </div>
+                                    <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                                        <button id="cancelRoleBtn" class="btn" style="background: #6c757d;">Cancel</button>
+                                        <button id="assignRoleBtn" class="btn">Assign Role</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -595,6 +719,6 @@
         </div>
     </div>
 
-    <script src="/js/app.js"></script>
+    <script src="/js/app.js?v=1.5"></script>
 </body>
 </html>

@@ -88,15 +88,7 @@ class SecurityMiddleware {
             .isLength({ min: 2, max: 50 })
             .withMessage('Last name must be between 2 and 50 characters')
             .matches(/^[a-zA-Z\s'-]+$/)
-            .withMessage('Last name can only contain letters, spaces, apostrophes, and hyphens'),
-        
-        body('confirmPassword')
-            .custom((value, { req }) => {
-                if (value !== req.body.password) {
-                    throw new Error('Password confirmation does not match password');
-                }
-                return true;
-            })
+            .withMessage('Last name can only contain letters, spaces, apostrophes, and hyphens')
     ];
 
     // Input validation for login
@@ -113,11 +105,24 @@ class SecurityMiddleware {
 
     // Input validation for MFA token
     static validateMFAToken = [
-        body('token')
+        body('mfaCode')
+            .optional()
             .isLength({ min: 6, max: 6 })
             .withMessage('MFA token must be 6 digits')
             .isNumeric()
-            .withMessage('MFA token must contain only numbers')
+            .withMessage('MFA token must contain only numbers'),
+        body('token')
+            .optional()
+            .isLength({ min: 6, max: 6 })
+            .withMessage('MFA token must be 6 digits')
+            .isNumeric()
+            .withMessage('MFA token must contain only numbers'),
+        body().custom((body) => {
+            if (!body.mfaCode && !body.token) {
+                throw new Error('MFA token is required');
+            }
+            return true;
+        })
     ];
 
     // Input validation for backup code

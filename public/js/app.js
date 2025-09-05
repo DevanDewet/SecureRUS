@@ -79,6 +79,9 @@ class SecureRUSApp {
 
         // Admin event listeners
         this.setupAdminEventListeners();
+
+        // Real-time validation listeners
+        this.setupValidationListeners();
     }
 
     setupFileEventListeners() {
@@ -351,9 +354,119 @@ class SecureRUSApp {
         }
     }
 
+    setupValidationListeners() {
+        // Real-time email validation
+        const loginEmail = document.getElementById('loginEmail');
+        const registerEmail = document.getElementById('registerEmail');
+        
+        [loginEmail, registerEmail].forEach(emailInput => {
+            if (emailInput) {
+                emailInput.addEventListener('blur', (e) => {
+                    this.validateField(e.target, 'email');
+                });
+                emailInput.addEventListener('input', (e) => {
+                    this.clearFieldError(e.target);
+                });
+            }
+        });
+
+        // Real-time password validation
+        const registerPassword = document.getElementById('registerPassword');
+        if (registerPassword) {
+            registerPassword.addEventListener('blur', (e) => {
+                this.validateField(e.target, 'password');
+            });
+            registerPassword.addEventListener('input', (e) => {
+                this.clearFieldError(e.target);
+            });
+        }
+
+        // Real-time name validation
+        const firstName = document.getElementById('firstName');
+        const lastName = document.getElementById('lastName');
+        
+        [firstName, lastName].forEach(nameInput => {
+            if (nameInput) {
+                nameInput.addEventListener('blur', (e) => {
+                    this.validateField(e.target, 'name');
+                });
+                nameInput.addEventListener('input', (e) => {
+                    this.clearFieldError(e.target);
+                });
+            }
+        });
+    }
+
+    validateField(field, type) {
+        const value = field.value.trim();
+        let isValid = true;
+        let message = '';
+
+        switch (type) {
+            case 'email':
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (value && !emailRegex.test(value)) {
+                    isValid = false;
+                    message = 'Please enter a valid email address';
+                }
+                break;
+            case 'password':
+                if (value && value.length < 8) {
+                    isValid = false;
+                    message = 'Password must be at least 8 characters';
+                } else if (value && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/.test(value)) {
+                    isValid = false;
+                    message = 'Password must contain uppercase, lowercase, number, and special character';
+                }
+                break;
+            case 'name':
+                if (value && (value.length < 2 || value.length > 50)) {
+                    isValid = false;
+                    message = 'Name must be between 2 and 50 characters';
+                } else if (value && !/^[a-zA-Z\s'-]+$/.test(value)) {
+                    isValid = false;
+                    message = 'Name can only contain letters, spaces, apostrophes, and hyphens';
+                }
+                break;
+        }
+
+        if (!isValid) {
+            this.showFieldError(field, message);
+        } else {
+            this.clearFieldError(field);
+        }
+    }
+
+    showFieldError(field, message) {
+        this.clearFieldError(field);
+        field.style.borderColor = '#dc3545';
+        
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'field-error';
+        errorDiv.style.cssText = 'color: #dc3545; font-size: 0.8rem; margin-top: 0.25rem;';
+        errorDiv.textContent = message;
+        
+        field.parentNode.appendChild(errorDiv);
+    }
+
+    clearFieldError(field) {
+        field.style.borderColor = '#e9ecef';
+        const existingError = field.parentNode.querySelector('.field-error');
+        if (existingError) {
+            existingError.remove();
+        }
+    }
+
     async handleLogin() {
         const email = document.getElementById('loginEmail').value;
         const password = document.getElementById('loginPassword').value;
+
+        // Client-side validation
+        const loginValidation = this.validateLogin(email, password);
+        if (!loginValidation.isValid) {
+            this.showError(loginValidation.message);
+            return;
+        }
 
         console.log('Attempting login...');
         
@@ -388,8 +501,10 @@ class SecureRUSApp {
     async verifyMFA() {
         const mfaCode = document.getElementById('mfaToken').value;
         
-        if (mfaCode.length !== 6) {
-            this.showError('Please enter a 6-digit MFA code');
+        // Client-side validation
+        const mfaValidation = this.validateMFAToken(mfaCode);
+        if (!mfaValidation.isValid) {
+            this.showError(mfaValidation.message);
             return;
         }
 
@@ -403,7 +518,7 @@ class SecureRUSApp {
                 },
                 body: JSON.stringify({ 
                     tempToken: this.tempToken,
-                    mfaCode: mfaCode 
+                    mfaCode: mfaValidation.cleanToken 
                 })
             });
 
@@ -459,6 +574,13 @@ class SecureRUSApp {
         const email = document.getElementById('registerEmail').value;
         const password = document.getElementById('registerPassword').value;
         const requestedRole = document.getElementById('requestedRole').value;
+
+        // Client-side validation
+        const registrationValidation = this.validateRegistration(firstName, lastName, email, password, requestedRole);
+        if (!registrationValidation.isValid) {
+            this.showError(registrationValidation.message);
+            return;
+        }
 
         console.log('Attempting registration...');
 
@@ -958,8 +1080,16 @@ class SecureRUSApp {
 
         let mfaCode = null;
 
-        // Check if this is a confidential file operation and user has MFA enabled
-        if (this.currentFileCategory === 'CONFIDENTIAL' && this.user?.mfa_enabled) {
+        // Security Check: Confidential files require MFA to be enabled
+        if (this.currentFileCategory === 'CONFIDENTIAL') {
+            if (!this.user?.mfa_enabled) {
+                this.showError('Upload Denied: Multi-Factor Authentication must be enabled to upload confidential files. Please enable MFA in your profile first.');
+                setTimeout(() => {
+                    this.showSection('profile');
+                }, 3000);
+                return;
+            }
+            
             mfaCode = await this.promptMFAForOperation('upload this confidential file');
             if (!mfaCode) {
                 return; // User cancelled or failed MFA
@@ -1044,66 +1174,48 @@ class SecureRUSApp {
             console.log(`Viewing file: ${filename} (ID: ${fileId})`);
 
             if (this.currentFileCategory === 'CONFIDENTIAL') {
-                // For confidential files, require MFA first
-                if (this.user.mfa_enabled) {
-                    const mfaCode = await this.promptMFAForOperation('view this confidential file');
-                    if (!mfaCode) {
-                        return; // User cancelled MFA prompt
-                    }
+                // Security Check: Confidential files require MFA to be enabled
+                if (!this.user?.mfa_enabled) {
+                    this.showError('Access Denied: Multi-Factor Authentication must be enabled to view confidential files. Please enable MFA in your profile first.');
+                    // Automatically navigate to profile after showing error
+                    setTimeout(() => {
+                        this.showSection('profile');
+                    }, 3000);
+                    return;
+                }
 
-                    // Make API call with MFA code
-                    const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${this.token}`
-                        },
-                        body: JSON.stringify({
-                            action: 'read',
-                            category: this.currentFileCategory.toUpperCase(),
-                            fileId: fileId,
-                            mfaCode: mfaCode
-                        })
-                    });
+                // For confidential files, require MFA verification
+                const mfaCode = await this.promptMFAForOperation('view this confidential file');
+                if (!mfaCode) {
+                    return; // User cancelled MFA prompt
+                }
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.content) {
-                            // Show content in modal for confidential files
-                            this.showFileModal(filename, data.content);
-                        } else {
-                            this.showError('Failed to retrieve file content');
-                        }
+                // Make API call with MFA code
+                const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.token}`
+                    },
+                    body: JSON.stringify({
+                        action: 'read',
+                        category: this.currentFileCategory.toUpperCase(),
+                        fileId: fileId,
+                        mfaCode: mfaCode
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.content) {
+                        // Show content in modal for confidential files
+                        this.showFileModal(filename, data.content);
                     } else {
-                        const errorData = await response.json();
-                        this.showError(errorData.message || 'Failed to access file');
+                        this.showError('Failed to retrieve file content');
                     }
                 } else {
-                    // No MFA enabled, make direct call
-                    const response = await fetch(`${this.baseURL}/files/${this.currentFileCategory.toLowerCase()}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${this.token}`
-                        },
-                        body: JSON.stringify({
-                            action: 'read',
-                            category: this.currentFileCategory.toUpperCase(),
-                            fileId: fileId
-                        })
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.content) {
-                            this.showFileModal(filename, data.content);
-                        } else {
-                            this.showError('Failed to retrieve file content');
-                        }
-                    } else {
-                        const errorData = await response.json();
-                        this.showError(errorData.message || 'Failed to access file');
-                    }
+                    const errorData = await response.json();
+                    this.showError(errorData.message || 'Failed to access file');
                 }
             } else {
                 // For images and documents, directly download the file
@@ -1177,8 +1289,16 @@ class SecureRUSApp {
 
         let mfaCode = null;
 
-        // Check if this is a confidential file operation and user has MFA enabled
-        if (this.currentFileCategory === 'CONFIDENTIAL' && this.user?.mfa_enabled) {
+        // Security Check: Confidential files require MFA to be enabled
+        if (this.currentFileCategory === 'CONFIDENTIAL') {
+            if (!this.user?.mfa_enabled) {
+                this.showError('Delete Denied: Multi-Factor Authentication must be enabled to delete confidential files. Please enable MFA in your profile first.');
+                setTimeout(() => {
+                    this.showSection('profile');
+                }, 3000);
+                return;
+            }
+            
             mfaCode = await this.promptMFAForOperation('delete this confidential file');
             if (!mfaCode) {
                 return; // User cancelled or failed MFA
@@ -1355,10 +1475,18 @@ class SecureRUSApp {
                 return;
             }
 
-            // For confidential files, require MFA
+            // Security Check: Confidential files require MFA to be enabled
             let mfaCode = null;
-            if (this.user?.mfa_enabled) {
-                mfaCode = await this.promptMFAForOperation('CONFIDENTIAL_WRITE');
+            if (this.currentFileCategory === 'CONFIDENTIAL') {
+                if (!this.user?.mfa_enabled) {
+                    this.showError('Edit Denied: Multi-Factor Authentication must be enabled to edit confidential files. Please enable MFA in your profile first.');
+                    setTimeout(() => {
+                        this.showSection('profile');
+                    }, 3000);
+                    return;
+                }
+                
+                mfaCode = await this.promptMFAForOperation('edit this confidential file');
                 if (!mfaCode) {
                     return; // User cancelled MFA prompt
                 }
@@ -1713,6 +1841,117 @@ class SecureRUSApp {
         });
     }
 
+    ensureAdminStructure() {
+        const adminContent = document.getElementById('admin-content');
+        if (!adminContent) return;
+        
+        // Check if admin dashboard exists
+        const adminDashboard = document.getElementById('admin-dashboard');
+        if (!adminDashboard) {
+            // Admin structure is missing, restore it
+            console.log('Admin structure missing, restoring...');
+            adminContent.innerHTML = `
+                <!-- Admin Dashboard Tabs -->
+                <div class="admin-tabs" style="display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 2px solid #e9ecef; flex-wrap: wrap;">
+                    <button class="admin-tab-btn active" data-tab="dashboard" style="padding: 1rem 2rem; border: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                        Dashboard
+                    </button>
+                    <button class="admin-tab-btn" data-tab="users" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                        All Users
+                    </button>
+                    <button class="admin-tab-btn" data-tab="pending" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                        Pending Approvals
+                    </button>
+                    <button class="admin-tab-btn" data-tab="audit" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                        Audit Logs
+                    </button>
+                </div>
+
+                <!-- Dashboard Tab -->
+                <div id="admin-dashboard" class="admin-tab-content">
+                    <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; margin-bottom: 2rem;">
+                        <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 1rem;">👥</div>
+                            <h3 id="totalUsers" style="font-size: 2.5rem; margin: 0;">-</h3>
+                            <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Total Users</p>
+                        </div>
+                        <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 1rem;">⏳</div>
+                            <h3 id="pendingUsers" style="font-size: 2.5rem; margin: 0;">-</h3>
+                            <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Pending Approval</p>
+                        </div>
+                        <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 1rem;">📁</div>
+                            <h3 id="totalFiles" style="font-size: 2.5rem; margin: 0;">-</h3>
+                            <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Total Files</p>
+                        </div>
+                        <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
+                            <h3 id="encryptedFiles" style="font-size: 2.5rem; margin: 0;">-</h3>
+                            <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Encrypted Files</p>
+                        </div>
+                    </div>
+
+                    <div class="recent-activity" style="background: white; border-radius: 15px; padding: 2rem; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                        <h3 style="color: #333; margin-bottom: 1.5rem;">Recent System Activity</h3>
+                        <div id="recentActivity" style="max-height: 300px; overflow-y: auto;">
+                            <p style="text-align: center; color: #666;">Loading recent activity...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- All Users Tab -->
+                <div id="admin-users" class="admin-tab-content hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                        <h3 style="color: #333;">All Users</h3>
+                        <button id="refreshUsersBtn" class="btn" style="background: #17a2b8; padding: 0.5rem 1rem;">
+                            Refresh
+                        </button>
+                    </div>
+                    <div id="usersTable" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                        <p style="text-align: center; color: #666; padding: 2rem;">Loading users...</p>
+                    </div>
+                </div>
+
+                <!-- Pending Users Tab -->
+                <div id="admin-pending" class="admin-tab-content hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                        <h3 style="color: #333;">Pending User Approvals</h3>
+                        <button id="refreshPendingBtn" class="btn" style="background: #17a2b8; padding: 0.5rem 1rem;">
+                            Refresh
+                        </button>
+                    </div>
+                    <div id="pendingUsersTable" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                        <p style="text-align: center; color: #666; padding: 2rem;">Loading pending users...</p>
+                    </div>
+                </div>
+
+                <!-- Audit Logs Tab -->
+                <div id="admin-audit" class="admin-tab-content hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                        <h3 style="color: #333;">Audit Logs</h3>
+                        <div style="display: flex; gap: 1rem; align-items: center;">
+                            <select id="auditFilter" style="padding: 0.5rem; border: 2px solid #e9ecef; border-radius: 5px;">
+                                <option value="">All Actions</option>
+                                <option value="LOGIN">Login</option>
+                                <option value="LOGOUT">Logout</option>
+                                <option value="FILE_UPLOAD">File Upload</option>
+                                <option value="FILE_DOWNLOAD">File Download</option>
+                                <option value="ADMIN">Admin Actions</option>
+                            </select>
+                            <button id="refreshAuditBtn" class="btn" style="background: #17a2b8; padding: 0.5rem 1rem;">
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div id="auditLogsTable" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                        <p style="text-align: center; color: #666; padding: 2rem;">Loading audit logs...</p>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
     async loadAdmin() {
         console.log('loadAdmin called, user object:', this.user);
         console.log('User role:', this.user?.role);
@@ -1730,13 +1969,16 @@ class SecureRUSApp {
         // If still not available after retries, show error
         if (!this.user || !this.user.role) {
             console.log('User object still not available after multiple retries');
-            document.getElementById('admin-content').innerHTML = `
-                <div style="text-align: center; color: #dc3545; padding: 2rem;">
-                    <p>User session not ready. Please try refreshing the page.</p>
-                    <button onclick="location.reload()" style="margin-top: 1rem; padding: 0.5rem 1rem; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                        Refresh Page
-                    </button>
-                </div>`;
+            const adminContent = document.getElementById('admin-content');
+            if (adminContent) {
+                adminContent.innerHTML = `
+                    <div style="text-align: center; color: #dc3545; padding: 2rem;">
+                        <p>User session not ready. Please try refreshing the page.</p>
+                        <button onclick="location.reload()" style="margin-top: 1rem; padding: 0.5rem 1rem; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                            Refresh Page
+                        </button>
+                    </div>`;
+            }
             return;
         }
         
@@ -1744,11 +1986,17 @@ class SecureRUSApp {
         
         if (!['ADMIN', 'MANAGER'].includes(this.user?.role)) {
             console.log('Access denied - insufficient privileges');
-            document.getElementById('admin-content').innerHTML = '<p style="text-align: center; color: #dc3545;">Access denied. Administrator privileges required.</p>';
+            const adminContent = document.getElementById('admin-content');
+            if (adminContent) {
+                adminContent.innerHTML = '<p style="text-align: center; color: #dc3545;">Access denied. Administrator privileges required.</p>';
+            }
             return;
         }
 
         console.log('Admin access granted, loading dashboard');
+        
+        // Make sure admin content structure exists (in case it was cleared)
+        this.ensureAdminStructure();
         
         // Wait a bit for the DOM to be ready after section switch
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -2718,6 +2966,15 @@ class SecureRUSApp {
         this.token = null;
         this.user = null;
         
+        // Clear any cached role/permission state
+        this.currentRole = null;
+        this.lastLoadedSection = null;
+        
+        // Clear any admin-specific cached data
+        this.adminUsers = null;
+        this.pendingUsers = null;
+        this.auditLogs = null;
+        
         // Reset all sections to their logged-out state
         this.resetSectionsToLoggedOutState();
         
@@ -2751,26 +3008,109 @@ class SecureRUSApp {
             analyticsContent.innerHTML = '<p style="text-align: center; color: #666; margin: 3rem 0;">Manager or Administrator access required</p>';
         }
         
-        // Reset Admin section - but preserve the structure
+        // Reset Admin section completely - restore original structure
         const adminContent = document.getElementById('admin-content');
         if (adminContent) {
-            // Instead of replacing the entire content, just reset the dashboard stats
-            const totalUsersEl = document.getElementById('totalUsers');
-            const pendingUsersEl = document.getElementById('pendingUsers');
-            const totalFilesEl = document.getElementById('totalFiles');
-            const encryptedFilesEl = document.getElementById('encryptedFiles');
-            const recentActivityEl = document.getElementById('recentActivity');
-            
-            if (totalUsersEl) totalUsersEl.textContent = '-';
-            if (pendingUsersEl) pendingUsersEl.textContent = '-';
-            if (totalFilesEl) totalFilesEl.textContent = '-';
-            if (encryptedFilesEl) encryptedFilesEl.textContent = '-';
-            if (recentActivityEl) recentActivityEl.innerHTML = '<p style="text-align: center; color: #666;">Please log in to view recent activity</p>';
-            
-            // Hide all admin tab content
-            document.querySelectorAll('.admin-tab-content').forEach(content => {
-                content.classList.add('hidden');
-            });
+            // Restore the original admin HTML structure instead of just showing a message
+            adminContent.innerHTML = `
+                <!-- Admin Dashboard Tabs -->
+                <div class="admin-tabs" style="display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 2px solid #e9ecef; flex-wrap: wrap;">
+                    <button class="admin-tab-btn active" data-tab="dashboard" style="padding: 1rem 2rem; border: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                        Dashboard
+                    </button>
+                    <button class="admin-tab-btn" data-tab="users" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                        All Users
+                    </button>
+                    <button class="admin-tab-btn" data-tab="pending" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                        Pending Approvals
+                    </button>
+                    <button class="admin-tab-btn" data-tab="audit" style="padding: 1rem 2rem; border: none; background: #f8f9fa; color: #495057; border-radius: 10px 10px 0 0; cursor: pointer; font-weight: 500;">
+                        Audit Logs
+                    </button>
+                </div>
+
+                <!-- Dashboard Tab -->
+                <div id="admin-dashboard" class="admin-tab-content">
+                    <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; margin-bottom: 2rem;">
+                        <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 1rem;">👥</div>
+                            <h3 id="totalUsers" style="font-size: 2.5rem; margin: 0;">-</h3>
+                            <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Total Users</p>
+                        </div>
+                        <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 1rem;">⏳</div>
+                            <h3 id="pendingUsers" style="font-size: 2.5rem; margin: 0;">-</h3>
+                            <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Pending Approval</p>
+                        </div>
+                        <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 1rem;">📁</div>
+                            <h3 id="totalFiles" style="font-size: 2.5rem; margin: 0;">-</h3>
+                            <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Total Files</p>
+                        </div>
+                        <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
+                            <h3 id="encryptedFiles" style="font-size: 2.5rem; margin: 0;">-</h3>
+                            <p style="opacity: 0.9; margin: 0.5rem 0 0 0;">Encrypted Files</p>
+                        </div>
+                    </div>
+
+                    <div class="recent-activity" style="background: white; border-radius: 15px; padding: 2rem; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                        <h3 style="color: #333; margin-bottom: 1.5rem;">Recent System Activity</h3>
+                        <div id="recentActivity" style="max-height: 300px; overflow-y: auto;">
+                            <p style="text-align: center; color: #666;">Loading recent activity...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- All Users Tab -->
+                <div id="admin-users" class="admin-tab-content hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                        <h3 style="color: #333;">All Users</h3>
+                        <button id="refreshUsersBtn" class="btn" style="background: #17a2b8; padding: 0.5rem 1rem;">
+                            Refresh
+                        </button>
+                    </div>
+                    <div id="usersTable" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                        <p style="text-align: center; color: #666; padding: 2rem;">Loading users...</p>
+                    </div>
+                </div>
+
+                <!-- Pending Users Tab -->
+                <div id="admin-pending" class="admin-tab-content hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                        <h3 style="color: #333;">Pending User Approvals</h3>
+                        <button id="refreshPendingBtn" class="btn" style="background: #17a2b8; padding: 0.5rem 1rem;">
+                            Refresh
+                        </button>
+                    </div>
+                    <div id="pendingUsersTable" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                        <p style="text-align: center; color: #666; padding: 2rem;">Loading pending users...</p>
+                    </div>
+                </div>
+
+                <!-- Audit Logs Tab -->
+                <div id="admin-audit" class="admin-tab-content hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                        <h3 style="color: #333;">Audit Logs</h3>
+                        <div style="display: flex; gap: 1rem; align-items: center;">
+                            <select id="auditFilter" style="padding: 0.5rem; border: 2px solid #e9ecef; border-radius: 5px;">
+                                <option value="">All Actions</option>
+                                <option value="LOGIN">Login</option>
+                                <option value="LOGOUT">Logout</option>
+                                <option value="FILE_UPLOAD">File Upload</option>
+                                <option value="FILE_DOWNLOAD">File Download</option>
+                                <option value="ADMIN">Admin Actions</option>
+                            </select>
+                            <button id="refreshAuditBtn" class="btn" style="background: #17a2b8; padding: 0.5rem 1rem;">
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div id="auditLogsTable" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                        <p style="text-align: center; color: #666; padding: 2rem;">Loading audit logs...</p>
+                    </div>
+                </div>
+            `;
         }
         
         // Reset file sections if they exist
@@ -2902,8 +3242,11 @@ class SecureRUSApp {
 
             verifyBtn.onclick = async () => {
                 const code = codeInput.value;
-                if (code.length !== 6) {
-                    this.showError('Please enter a 6-digit code');
+                
+                // Client-side validation
+                const mfaValidation = this.validateMFAToken(code);
+                if (!mfaValidation.isValid) {
+                    this.showError(mfaValidation.message);
                     return;
                 }
 
@@ -2915,7 +3258,7 @@ class SecureRUSApp {
                             'Authorization': `Bearer ${this.token}`
                         },
                         body: JSON.stringify({
-                            mfaCode: code,
+                            mfaCode: mfaValidation.cleanToken,
                             operation: operationName
                         })
                     });
@@ -2948,6 +3291,105 @@ class SecureRUSApp {
                 }
             };
         });
+    }
+
+    // Client-side validation functions
+    validateLogin(email, password) {
+        // Email validation
+        if (!email || email.trim() === '') {
+            return { isValid: false, message: 'Email is required' };
+        }
+        
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return { isValid: false, message: 'Please provide a valid email address' };
+        }
+
+        // Password validation
+        if (!password || password.trim() === '') {
+            return { isValid: false, message: 'Password is required' };
+        }
+
+        return { isValid: true };
+    }
+
+    validateRegistration(firstName, lastName, email, password, requestedRole) {
+        // First name validation
+        if (!firstName || firstName.trim() === '') {
+            return { isValid: false, message: 'First name is required' };
+        }
+        if (firstName.length < 2 || firstName.length > 50) {
+            return { isValid: false, message: 'First name must be between 2 and 50 characters' };
+        }
+        if (!/^[a-zA-Z\s'-]+$/.test(firstName)) {
+            return { isValid: false, message: 'First name can only contain letters, spaces, apostrophes, and hyphens' };
+        }
+
+        // Last name validation
+        if (!lastName || lastName.trim() === '') {
+            return { isValid: false, message: 'Last name is required' };
+        }
+        if (lastName.length < 2 || lastName.length > 50) {
+            return { isValid: false, message: 'Last name must be between 2 and 50 characters' };
+        }
+        if (!/^[a-zA-Z\s'-]+$/.test(lastName)) {
+            return { isValid: false, message: 'Last name can only contain letters, spaces, apostrophes, and hyphens' };
+        }
+
+        // Email validation
+        if (!email || email.trim() === '') {
+            return { isValid: false, message: 'Email is required' };
+        }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return { isValid: false, message: 'Please provide a valid email address' };
+        }
+        if (email.length < 5 || email.length > 100) {
+            return { isValid: false, message: 'Email must be between 5 and 100 characters' };
+        }
+
+        // Password validation
+        if (!password || password.trim() === '') {
+            return { isValid: false, message: 'Password is required' };
+        }
+        if (password.length < 8 || password.length > 128) {
+            return { isValid: false, message: 'Password must be between 8 and 128 characters' };
+        }
+        
+        // Password strength validation
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/;
+        if (!passwordRegex.test(password)) {
+            return { 
+                isValid: false, 
+                message: 'Password must contain at least one lowercase letter, uppercase letter, number, and special character' 
+            };
+        }
+
+        // Role validation
+        if (!requestedRole || requestedRole === '') {
+            return { isValid: false, message: 'Please select a requested role' };
+        }
+
+        return { isValid: true };
+    }
+
+    validateMFAToken(token) {
+        if (!token || token.trim() === '') {
+            return { isValid: false, message: 'MFA token is required' };
+        }
+        
+        // Remove any non-digit characters
+        const cleanToken = token.replace(/\D/g, '');
+        
+        if (cleanToken.length !== 6) {
+            return { isValid: false, message: 'MFA token must be 6 digits' };
+        }
+        
+        if (!/^\d{6}$/.test(cleanToken)) {
+            return { isValid: false, message: 'MFA token must contain only numbers' };
+        }
+
+        return { isValid: true, cleanToken };
     }
 }
 

@@ -426,7 +426,8 @@ function createFileRoutes(database, authMiddleware) {
                     const encryptionResult = await encryptionService.encryptFile(
                         req.file.path,
                         req.file.originalname,
-                        userId
+                        userId,
+                        true // isConfidential = true
                     );
                     finalPath = encryptionResult.encryptedPath;
                     isEncrypted = true;
@@ -522,7 +523,8 @@ function createFileRoutes(database, authMiddleware) {
                 const encryptedData = encryptionService.encryptText(
                     content, 
                     file.original_name, 
-                    req.user.id
+                    req.user.id,
+                    true // isConfidential = true
                 );
 
                 // Write encrypted content to file

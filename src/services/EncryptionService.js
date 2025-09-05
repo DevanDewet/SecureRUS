@@ -26,9 +26,20 @@ class EncryptionService {
     }
 
     // Generate a file-specific encryption key
-    generateFileKey(filename, userId) {
+    generateFileKey(filename, userId, isConfidential = false) {
         const timestamp = Date.now();
-        const data = `${filename}-${userId}-${timestamp}`;
+        
+        // For confidential files, use a shared key approach that doesn't depend on specific user ID
+        // This allows any authorized user (ADMIN/MANAGER) to decrypt the file
+        let data;
+        if (isConfidential) {
+            // Use filename and timestamp only for confidential files
+            data = `confidential-${filename}-${timestamp}`;
+        } else {
+            // Use user-specific key for non-confidential files
+            data = `${filename}-${userId}-${timestamp}`;
+        }
+        
         const salt = crypto.randomBytes(32);
         
         // Derive key using PBKDF2
@@ -38,20 +49,21 @@ class EncryptionService {
             key: fileKey,
             salt: salt,
             timestamp: timestamp,
-            keyHash: crypto.createHash('sha256').update(fileKey).digest('hex')
+            keyHash: crypto.createHash('sha256').update(fileKey).digest('hex'),
+            keySource: data // Store the key source for reconstruction
         };
     }
 
     // Encrypt file content
-    async encryptFile(filePath, filename, userId) {
+    async encryptFile(filePath, filename, userId, isConfidential = false) {
         try {
-            console.log(`Encrypting file: ${filename} for user: ${userId}`);
+            console.log(`Encrypting file: ${filename} for user: ${userId}, confidential: ${isConfidential}`);
             
             // Read original file
             const fileContent = await fs.readFile(filePath);
             
             // Generate file-specific key
-            const { key, salt, timestamp, keyHash } = this.generateFileKey(filename, userId);
+            const { key, salt, timestamp, keyHash, keySource } = this.generateFileKey(filename, userId, isConfidential);
             
             // Create cipher
             const iv = crypto.randomBytes(this.ivLength);
@@ -67,7 +79,9 @@ class EncryptionService {
                 salt: salt.toString('hex'),
                 data: encrypted.toString('hex'),
                 algorithm: this.algorithm,
-                timestamp: timestamp
+                timestamp: timestamp,
+                keySource: keySource, // Store the key source for reconstruction
+                isConfidential: isConfidential
             };
             
             // Write encrypted file
@@ -105,8 +119,21 @@ class EncryptionService {
                 throw new Error('Missing timestamp in encrypted data');
             }
             
-            // Reconstruct file key using the stored timestamp
-            const { key } = this.reconstructFileKey(filename, userId, encryptedData.salt, keyHash, encryptedData.timestamp);
+            // Use the stored keySource if available, otherwise reconstruct for backward compatibility
+            let keySource;
+            if (encryptedData.keySource) {
+                keySource = encryptedData.keySource;
+            } else {
+                // Backward compatibility: try to reconstruct the key source
+                if (encryptedData.isConfidential) {
+                    keySource = `confidential-${filename}-${encryptedData.timestamp}`;
+                } else {
+                    keySource = `${filename}-${userId}-${encryptedData.timestamp}`;
+                }
+            }
+            
+            // Reconstruct file key using the key source
+            const { key } = this.reconstructFileKeyFromSource(keySource, encryptedData.salt, keyHash);
             
             // Create decipher
             const iv = Buffer.from(encryptedData.iv, 'hex');
@@ -126,7 +153,24 @@ class EncryptionService {
         }
     }
 
-    // Reconstruct file key for decryption
+    // Reconstruct file key for decryption using key source
+    reconstructFileKeyFromSource(keySource, saltHex, expectedKeyHash) {
+        const salt = Buffer.from(saltHex, 'hex');
+        
+        // Use the stored key source to regenerate the key
+        const key = crypto.pbkdf2Sync(keySource, salt, this.iterations, this.keyLength, 'sha512');
+        const keyHash = crypto.createHash('sha256').update(key).digest('hex');
+        
+        if (keyHash !== expectedKeyHash) {
+            console.error(`Key verification failed. Expected: ${expectedKeyHash}, Got: ${keyHash}`);
+            console.error(`Key source used: ${keySource}`);
+            throw new Error('Key verification failed - unauthorized access attempt');
+        }
+        
+        return { key, salt };
+    }
+
+    // Reconstruct file key for decryption (backward compatibility)
     reconstructFileKey(filename, userId, saltHex, expectedKeyHash, timestamp) {
         const salt = Buffer.from(saltHex, 'hex');
         
@@ -144,9 +188,9 @@ class EncryptionService {
     }
 
     // Encrypt text content (for confidential text files)
-    encryptText(text, filename, userId) {
+    encryptText(text, filename, userId, isConfidential = false) {
         try {
-            const { key, salt, timestamp, keyHash } = this.generateFileKey(filename, userId);
+            const { key, salt, timestamp, keyHash, keySource } = this.generateFileKey(filename, userId, isConfidential);
             
             const iv = crypto.randomBytes(this.ivLength);
             const cipher = crypto.createCipheriv(this.algorithm, key, iv);
@@ -160,7 +204,9 @@ class EncryptionService {
                 data: encrypted.toString('hex'),
                 keyHash,
                 algorithm: this.algorithm,
-                timestamp: timestamp
+                timestamp: timestamp,
+                keySource: keySource,
+                isConfidential: isConfidential
             };
             
         } catch (error) {
@@ -177,7 +223,20 @@ class EncryptionService {
                 throw new Error('Missing timestamp in encrypted data');
             }
             
-            const { key } = this.reconstructFileKey(filename, userId, encryptedData.salt, encryptedData.keyHash, encryptedData.timestamp);
+            // Use the stored keySource if available, otherwise reconstruct for backward compatibility
+            let keySource;
+            if (encryptedData.keySource) {
+                keySource = encryptedData.keySource;
+            } else {
+                // Backward compatibility: try to reconstruct the key source
+                if (encryptedData.isConfidential) {
+                    keySource = `confidential-${filename}-${encryptedData.timestamp}`;
+                } else {
+                    keySource = `${filename}-${userId}-${encryptedData.timestamp}`;
+                }
+            }
+            
+            const { key } = this.reconstructFileKeyFromSource(keySource, encryptedData.salt, encryptedData.keyHash);
             
             const iv = Buffer.from(encryptedData.iv, 'hex');
             const decipher = crypto.createDecipheriv(this.algorithm, key, iv);

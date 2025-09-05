@@ -11,6 +11,8 @@ function createAuthRoutes(database, authMiddleware) {
     // Login endpoint
     router.post('/login',
         SecurityMiddleware.loginRateLimit,
+        SecurityMiddleware.validateLogin,
+        SecurityMiddleware.handleValidationErrors,
         async (req, res) => {
             try {
                 const { email, password } = req.body;
@@ -113,6 +115,8 @@ function createAuthRoutes(database, authMiddleware) {
     // Register endpoint
     router.post('/register',
         SecurityMiddleware.registrationRateLimit,
+        SecurityMiddleware.validateRegistration,
+        SecurityMiddleware.handleValidationErrors,
         async (req, res) => {
             try {
                 const { firstName, lastName, email, password, requestedRole } = req.body;
@@ -247,6 +251,9 @@ function createAuthRoutes(database, authMiddleware) {
 
     // MFA Verification endpoint (for login)
     router.post('/verify-mfa',
+        SecurityMiddleware.mfaRateLimit,
+        SecurityMiddleware.validateMFAToken,
+        SecurityMiddleware.handleValidationErrors,
         async (req, res) => {
             try {
                 const { tempToken, mfaCode } = req.body;
@@ -385,6 +392,9 @@ function createAuthRoutes(database, authMiddleware) {
     // Verify MFA for sensitive operations endpoint
     router.post('/verify-mfa-operation',
         authMiddleware.authenticateToken(),
+        SecurityMiddleware.mfaRateLimit,
+        SecurityMiddleware.validateMFAToken,
+        SecurityMiddleware.handleValidationErrors,
         async (req, res) => {
             try {
                 const { mfaCode, operation } = req.body;

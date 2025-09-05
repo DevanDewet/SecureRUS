@@ -571,21 +571,21 @@
                         </div>
 
                         <!-- File View Modal -->
-                        <div id="fileViewModal" class="modal hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; align-items: center; justify-content: center;">
-                            <div class="modal-content" style="background: white; border-radius: 20px; padding: 2rem; max-width: 80%; max-height: 80%; overflow: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-                                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #e9ecef; padding-bottom: 1rem;">
-                                    <h3 id="modalFileName" style="color: #333;"></h3>
-                                    <button id="closeModalBtn" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">✖️</button>
+                        <div id="fileViewModal" class="modal hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%); backdrop-filter: blur(8px); z-index: 1000; align-items: center; justify-content: center;">
+                            <div class="modal-content" style="background: rgba(255, 255, 255, 0.95); border-radius: 20px; padding: 2rem; width: 90%; max-width: 900px; max-height: 85%; overflow: auto; box-shadow: 0 25px 50px rgba(30, 60, 114, 0.2); border: 1px solid rgba(255, 255, 255, 0.3);">
+                                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 2px solid #e9ecef; padding-bottom: 1rem;">
+                                    <h3 id="modalFileName" style="color: #1e3c72; margin: 0; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">🔒 <span></span></h3>
+                                    <button id="closeModalBtn" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; font-size: 1.2rem; cursor: pointer; color: white; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease;">✖️</button>
                                 </div>
-                                <div id="modalFileContent" style="white-space: pre-wrap; font-family: monospace; background: #f8f9fa; padding: 1rem; border-radius: 15px; max-height: 400px; overflow: auto; border: 1px solid #e9ecef;">
+                                <div id="modalFileContent" style="white-space: pre-wrap; font-family: 'Consolas', 'Monaco', monospace; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 1.5rem; border-radius: 15px; max-height: 500px; overflow: auto; border: 2px solid #dee2e6; box-shadow: inset 0 2px 10px rgba(0,0,0,0.05); min-height: 400px;">
                                 </div>
-                                <textarea id="modalFileEditor" class="hidden" style="width: 100%; height: 400px; font-family: monospace; background: #f8f9fa; padding: 1rem; border: 1px solid #ddd; border-radius: 15px; resize: vertical;"></textarea>
-                                <div class="modal-actions" style="margin-top: 1rem; display: flex; gap: 1rem;">
-                                    <button id="editFileBtn" class="btn" style="background: #28a745;">Edit</button>
-                                    <button id="saveFileBtn" class="btn hidden" style="background: #007bff;">Save</button>
-                                    <button id="cancelEditBtn" class="btn hidden" style="background: #6c757d;">Cancel</button>
-                                    <button id="downloadFileBtn" class="btn">Download</button>
-                                    <button id="deleteFileBtn" class="btn" style="background: #dc3545;">Delete</button>
+                                <textarea id="modalFileEditor" class="hidden" style="width: 100%; height: 500px; font-family: 'Consolas', 'Monaco', monospace; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 1.5rem; border: 2px solid #dee2e6; border-radius: 15px; resize: vertical; box-shadow: inset 0 2px 10px rgba(0,0,0,0.05); min-height: 400px;"></textarea>
+                                <div class="modal-actions" style="margin-top: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; border-top: 2px solid #e9ecef; padding-top: 1.5rem;">
+                                    <button id="editFileBtn" class="btn" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 25px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);">Edit</button>
+                                    <button id="saveFileBtn" class="btn hidden" style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 25px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);">Save</button>
+                                    <button id="cancelEditBtn" class="btn hidden" style="background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 25px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(108, 117, 125, 0.3);">Cancel</button>
+                                    <button id="downloadFileBtn" class="btn" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 25px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);">Download</button>
+                                    <button id="deleteFileBtn" class="btn" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 25px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);">Delete</button>
                                 </div>
                             </div>
                         </div>
